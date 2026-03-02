@@ -36,11 +36,32 @@ const THEMES = {
   },
 };
 
-const COLORS = {
-  dark: { name: 'Dunkel', bg: '#050505', text: '#ffffff', accent: '#4facfe' },
-  warm: { name: 'Warm', bg: '#1a0f0a', text: '#f5e6d3', accent: '#e8915a' },
-  forest: { name: 'Wald', bg: '#0f1a14', text: '#d9eedf', accent: '#50c878' },
+// Per-Theme Farbschemas (3 Varianten pro Design)
+const THEME_COLORS = {
+  minimalist: [
+    { name: 'Monochrom', bg: '#fafafa', text: '#222', accent: '#000000' },
+    { name: 'Cool Gray', bg: '#f0f4f8', text: '#334155', accent: '#4facfe' },
+    { name: 'Warm Sand', bg: '#fdf8f0', text: '#3d3027', accent: '#c49a6c' },
+  ],
+  brachial: [
+    { name: 'Schwarz/Weiss', bg: '#000000', text: '#ffffff', accent: '#ffffff' },
+    { name: 'Feuerrot', bg: '#0a0000', text: '#ffffff', accent: '#ff2d2d' },
+    { name: 'Neon Grün', bg: '#050505', text: '#ffffff', accent: '#39ff14' },
+  ],
+  modern: [
+    { name: 'Ocean Blue', bg: '#fdfbfb', text: '#333', accent: '#4facfe' },
+    { name: 'Sunset', bg: '#fff5f5', text: '#333', accent: '#ff6b6b' },
+    { name: 'Aurora', bg: '#f0fdf4', text: '#1a3a2a', accent: '#22c55e' },
+  ],
+  classic: [
+    { name: 'Elfenbein', bg: '#fdfbf7', text: '#2b2b2b', accent: '#8b7355' },
+    { name: 'Bordeaux', bg: '#faf5f5', text: '#2b1515', accent: '#8b1a1a' },
+    { name: 'Navy Gold', bg: '#f5f5fa', text: '#1a1a3a', accent: '#b8860b' },
+  ],
 };
+
+// Helper to get the current color
+const getColor = (design, colorIndex) => THEME_COLORS[design]?.[colorIndex] || THEME_COLORS.minimalist[0];
 
 const DEFAULT_PAGES = [
   { id: 'home', title: 'Startseite', required: true, selected: true },
@@ -53,9 +74,9 @@ const DEFAULT_PAGES = [
    FLATSITE – Mini Website Preview Component
    ========================================================================== */
 
-function MiniSitePreview({ themeKey, colorKey }) {
+function MiniSitePreview({ themeKey, colorIndex }) {
   const theme = THEMES[themeKey];
-  const color = COLORS[colorKey];
+  const color = getColor(themeKey, colorIndex);
   return (
     <div className={`mini-site-preview ${theme.previewClass}`} style={{ borderRadius: '8px', overflow: 'hidden', aspectRatio: '16/10', border: '1px solid var(--border-color)' }}>
       {/* Mini Nav */}
@@ -85,9 +106,9 @@ function MiniSitePreview({ themeKey, colorKey }) {
    FLATSITE – Live Preview Component (Full-size)
    ========================================================================== */
 
-function LivePreview({ themeKey, colorKey, projectName }) {
+function LivePreview({ themeKey, colorIndex, projectName }) {
   const theme = THEMES[themeKey];
-  const color = COLORS[colorKey];
+  const color = getColor(themeKey, colorIndex);
   return (
     <div className={`live-preview-container ${theme.themeClass}`} style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)', minHeight: '300px' }}>
       {/* Navigation */}
@@ -141,7 +162,7 @@ function App() {
 
   // Design
   const [selectedDesign, setSelectedDesign] = useState('minimalist');
-  const [selectedColor, setSelectedColor] = useState('dark');
+  const [selectedColor, setSelectedColor] = useState(0);
 
   // Hosting
   const [ftpServer, setFtpServer] = useState('');
@@ -181,20 +202,12 @@ function App() {
 
   /* ---- Kirby Server & Auto-Login ---- */
   const startKirbyAndLogin = async () => {
+    // PHP server is already running via `npm run dev` (concurrently)
+    // We just need to wait a moment and then show the panel
     try {
-      // Start the local PHP server
-      await fetch('http://localhost:3001/api/start-kirby', { method: 'POST' });
-      // Wait for PHP to boot, then auto-login
-      setTimeout(async () => {
-        try {
-          await fetch('http://localhost:3001/api/auto-login', { method: 'POST' });
-        } catch (e) { /* silent */ }
-        setKirbyReady(true);
-      }, 2500);
-    } catch (err) {
-      console.error('Kirby start failed:', err);
-      setKirbyReady(true); // Show iframe anyway
-    }
+      await fetch('http://localhost:3001/api/auto-login', { method: 'POST' });
+    } catch (e) { /* silent – login might not work but panel will still show */ }
+    setKirbyReady(true);
   };
 
   /* ---- Hosting Setup (invisible Kirby account) ---- */
@@ -216,7 +229,7 @@ function App() {
         });
       }
       // Apply theme
-      const color = COLORS[selectedColor];
+      const color = getColor(selectedDesign, selectedColor);
       await fetch('http://localhost:3001/api/update-theme', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -551,7 +564,7 @@ function App() {
                   transition: 'all 0.2s', boxShadow: selectedDesign === key ? '0 0 20px rgba(79,172,254,0.15)' : 'none'
                 }}>
                   {/* Visual Preview */}
-                  <MiniSitePreview themeKey={key} colorKey={selectedColor} />
+                  <MiniSitePreview themeKey={key} colorIndex={key === selectedDesign ? selectedColor : 0} />
                   {/* Theme Info */}
                   <div style={{ marginTop: '0.8rem', textAlign: 'center' }}>
                     <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.2rem' }}>
@@ -565,22 +578,22 @@ function App() {
               ))}
             </div>
 
-            {/* Color Variants */}
-            <h3 style={{ fontSize: '1.3rem', marginBottom: '1.5rem', textAlign: 'center' }}>Farbvariante</h3>
+            {/* Color Variants (per theme) */}
+            <h3 style={{ fontSize: '1.3rem', marginBottom: '1.5rem', textAlign: 'center' }}>Farbvariante für {THEMES[selectedDesign].name}</h3>
             <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', marginBottom: '3rem' }}>
-              {Object.entries(COLORS).map(([key, color]) => (
-                <div key={key} onClick={() => setSelectedColor(key)} style={{
+              {THEME_COLORS[selectedDesign].map((color, idx) => (
+                <div key={idx} onClick={() => setSelectedColor(idx)} style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.8rem', cursor: 'pointer'
                 }}>
                   <div style={{
                     width: '60px', height: '60px', borderRadius: '50%', background: color.bg,
-                    border: selectedColor === key ? `3px solid ${color.accent}` : '2px solid var(--border-color)',
-                    boxShadow: selectedColor === key ? `0 0 15px ${color.accent}40` : 'none',
+                    border: selectedColor === idx ? `3px solid ${color.accent}` : '2px solid var(--border-color)',
+                    boxShadow: selectedColor === idx ? `0 0 15px ${color.accent}40` : 'none',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s'
                   }}>
                     <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: color.accent }}></div>
                   </div>
-                  <span style={{ fontSize: '0.85rem', color: selectedColor === key ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                  <span style={{ fontSize: '0.85rem', color: selectedColor === idx ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
                     {color.name}
                   </span>
                 </div>
@@ -589,7 +602,7 @@ function App() {
 
             {/* Full-Size Live Preview */}
             <h3 style={{ fontSize: '1.3rem', marginBottom: '1rem', textAlign: 'center' }}>Vorschau</h3>
-            <LivePreview themeKey={selectedDesign} colorKey={selectedColor} projectName={projectName} />
+            <LivePreview themeKey={selectedDesign} colorIndex={selectedColor} projectName={projectName} />
 
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: '3rem' }}>
               <button className="btn-primary" style={{ padding: '1rem 3rem' }}
@@ -649,11 +662,11 @@ function App() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
                   <div style={{ width: '120px', height: '70px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}>
-                    <MiniSitePreview themeKey={selectedDesign} colorKey={selectedColor} />
+                    <MiniSitePreview themeKey={selectedDesign} colorIndex={selectedColor} />
                   </div>
                   <div>
                     <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                      {THEMES[selectedDesign]?.name} · {COLORS[selectedColor]?.name}
+                      {THEMES[selectedDesign]?.name} · {getColor(selectedDesign, selectedColor)?.name}
                     </div>
                     <span onClick={() => setStep('design')} style={{
                       fontSize: '0.8rem', color: '#4facfe', cursor: 'pointer', textDecoration: 'underline'
@@ -705,7 +718,7 @@ function App() {
             {/* Kirby Editor Iframe */}
             {kirbyReady ? (
               <iframe
-                src="/panel/site"
+                src="/panel"
                 style={{ width: '100%', flex: 1, border: 'none', minHeight: '600px' }}
                 title="Kirby CMS Editor"
               />

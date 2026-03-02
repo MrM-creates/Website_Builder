@@ -1,54 +1,80 @@
 <?php
-
 /**
- * Flatsite Auto-Login Ghost Account 
- * This plugin creates an invisible master account and logs the user 
- * perfectly in the background when running on localhost.
+ * Flatsite Auto-Login Plugin
+ * Creates an admin account and logs in automatically on localhost.
  */
-
 Kirby::plugin('flatsite/autologin', [
     'hooks' => [
         'route:before' => function ($route, $path, $method) {
             $kirby = kirby();
 
-            // 1. Ensure an account exists
-            $admin = $kirby->users()->role('admin')->first();
+            // Safety: only on localhost
+            $host = $_SERVER['HTTP_HOST'] ?? '';
+            if (strpos($host, 'localhost') === false && strpos($host, '127.0.0.1') === false) {
+                return;
+            }
 
-            if (!$admin) {
-                try {
-                    $kirby->impersonate('kirby');
-                    $admin = $kirby->users()->create([
-                                'email' => 'admin@flatsite.app',
-                                'role' => 'admin',
-                                'password' => 'flatsite_ghost',
-                                'language' => 'de'
-                            ]);
-                }
-                catch (\Exception $e) {
-                // Silently fail
+            // Only for panel routes
+            if (strpos($path, 'panel') !== 0) {
+                return;
+            }
+
+            // Already logged in
+            if ($kirby->user()) {
+                return;
+            }
+
+            // Loop prevention
+            if (isset($_COOKIE['flatsite_al'])) {
+                return;
+            }
+
+            $kirby->impersonate('kirby');
+
+            // Fix empty user.txt files
+            $accountsDir = $kirby->root('accounts');
+            if (is_dir($accountsDir)) {
+                foreach (new DirectoryIterator($accountsDir) as $item) {
+                    if ($item->isDot() || !$item->isDir())
+                        continue;
+                    $userFile = $item->getPathname() . '/user.txt';
+                    if (file_exists($userFile) && filesize($userFile) === 0) {
+                        file_put_contents($userFile, "Email: admin@flatsite.app\n\n----\n\nName: Flatsite Admin\n\n----\n\nLanguage: de\n\n----\n\nRole: admin\n");
+                    }
                 }
             }
 
-            // 2. Automatically log in if accessing the panel without a session
-            if (strpos($path, 'panel') === 0 && !$kirby->user() && $admin) {
-                if (isset($_COOKIE['flatsite_login_loop'])) {
-                    return; // Give up to prevent infinite redirect loop
-                }
+            // Get or create admin
+            $admin = $kirby->users()->role('admin')->first();
 
-                try {
-                    $session = $kirby->session(['long' => true]);
-                    $session->set('kirby.userId', $admin->id());
+            if (!$admin) {
+                // Create account manually via filesystem
+                $folderName = bin2hex(random_bytes(4));
+                $dir = $accountsDir . '/' . $folderName;
+                @mkdir($dir, 0755, true);
 
-                    // Set loop prevention cookie
-                    setcookie('flatsite_login_loop', '1', time() + 10, '/');
+                file_put_contents($dir . '/user.txt', "Email: admin@flatsite.app\n\n----\n\nName: Flatsite Admin\n\n----\n\nLanguage: de\n\n----\n\nRole: admin\n");
+                file_put_contents($dir . '/.htpasswd', password_hash('flatsite2026', PASSWORD_BCRYPT));
+                file_put_contents($dir . '/index.php', "<?php\n\ndie();\n");
 
-                    // Force a redirect to the exact requested path to apply the session
-                    header('Location: /' . $path);
-                    exit;
-                }
-                catch (\Exception $e) {
-                // Ignore if auth fails
-                }
+                // Reload users
+                $admin = $kirby->users()->role('admin')->first();
+            }
+
+            if (!$admin) {
+                return;
+            }
+
+            // Set session
+            try {
+                $session = $kirby->session(['long' => true]);
+                $session->set('kirby.userId', $admin->id());
+                setcookie('flatsite_al', '1', time() + 5, '/');
+                header('Location: /' . $path);
+                exit;
+            }
+            catch (\Exception $e) {
+                return;
             }
         }
     ]
