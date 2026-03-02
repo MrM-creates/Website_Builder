@@ -224,27 +224,23 @@ function App() {
 
   /* ---- Kirby Server & Auto-Login ---- */
   const startKirbyAndLogin = async () => {
-    // Login via Vite proxy → Kirby API (same origin = no CORS, cookie set correctly)
+    // Login via backend (creates Kirby session file directly on filesystem)
+    // Routed through Vite proxy → same origin → cookie works for iframe
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch('/api/auto-login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          email: 'admin@flatsite.app',
-          password: 'flatsite2026',
-          long: true
-        })
+        credentials: 'same-origin'
       });
-      if (res.ok) {
+      const data = await res.json();
+      if (data.success) {
         console.log('Kirby Auto-Login erfolgreich');
       } else {
-        console.log('Kirby Auto-Login fehlgeschlagen:', res.status);
+        console.log('Kirby Auto-Login fehlgeschlagen:', data.message);
       }
     } catch (e) {
       console.log('Kirby Auto-Login Fehler:', e.message);
     }
-    // Small delay to let session cookie propagate
+    // Delay to let cookie propagate
     await new Promise(r => setTimeout(r, 500));
     setKirbyReady(true);
   };

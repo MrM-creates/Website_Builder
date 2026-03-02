@@ -1,6 +1,6 @@
 :root {
-  --color-primary: #b8860b;
-  --color-background: #f5f5fa;
-  --color-text: #1a1a3a;
-  --font-family: "Playfair Display", serif;
+  --color-primary: #000000;
+  --color-background: #fafafa;
+  --color-text: #222;
+  --font-family: "Inter", sans-serif;
 }

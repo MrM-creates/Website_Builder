@@ -208,7 +208,9 @@ app.post('/api/ensure-account', (req, res) => {
         // Kirby stores accounts as .txt files with YAML-like content
         // The password needs to be hashed by Kirby itself on first login
         // We write a minimal account file and let Kirby handle password hashing
-        const accountContent = `Email: ${email}\n\n----\n\nLanguage: de\n\n----\n\nName: Flatsite Admin\n\n----\n\nRole: admin\n\n----\n\nPassword: $2a$10$placeholder\n`;
+        // Use the pre-generated bcrypt hash for 'flatsite2026'
+        const bcryptHash = '$2y$12$KtDqJZUN.tjtrv9dktoYS.4F6PYxZtEvM0t3rxGzEfjQGg5ln0lBK';
+        const accountContent = `Email: ${email}\n\n----\n\nName: Flatsite Admin\n\n----\n\nLanguage: de\n\n----\n\nRole: admin\n\n----\n\nPassword: ${bcryptHash}\n`;
         fs.writeFileSync(path.join(accountDir, 'user.txt'), accountContent, 'utf-8');
 
         console.log(`Kirby Account angelegt: ${email} in ${folderName}`);
@@ -221,7 +223,7 @@ app.post('/api/ensure-account', (req, res) => {
 });
 
 
-// ENDPOINT: AUTO-LOGIN (Authenticate against local Kirby API)
+// ENDPOINT: AUTO-LOGIN (Use Kirby's own API – password now in user.txt)
 app.post('/api/auto-login', async (req, res) => {
     try {
         const loginRes = await fetch('http://localhost:8000/api/auth/login', {
@@ -234,7 +236,7 @@ app.post('/api/auto-login', async (req, res) => {
             })
         });
 
-        // Forward the session cookie regardless of body parsing
+        // Forward Kirby's Set-Cookie (correct HMAC+token format)
         const setCookie = loginRes.headers.get('set-cookie');
         if (setCookie) {
             res.setHeader('Set-Cookie', setCookie);
@@ -245,15 +247,12 @@ app.post('/api/auto-login', async (req, res) => {
             res.json({ success: true });
         } else {
             let msg = 'Login fehlgeschlagen';
-            try {
-                const data = await loginRes.json();
-                msg = data.message || msg;
-            } catch (e) { /* body not JSON */ }
+            try { const d = await loginRes.json(); msg = d.message || msg; } catch (e) { }
             console.log('Kirby Auto-Login fehlgeschlagen:', msg);
             res.json({ success: false, message: msg });
         }
     } catch (err) {
-        console.log('Kirby Auto-Login: Server noch nicht bereit oder Fehler:', err.message);
+        console.log('Kirby Auto-Login Fehler:', err.message);
         res.json({ success: false, message: 'Kirby Server noch nicht bereit' });
     }
 });

@@ -11,6 +11,11 @@ export default defineConfig({
         followRedirects: true,
         cookieDomainRewrite: 'localhost'
       },
+      '/api/auto-login': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        cookieDomainRewrite: 'localhost'
+      },
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true
