@@ -1,0 +1,10 @@
+title: Contact
+preset: page
+fields:
+  text:
+    label: Einleitungstext
+    type: textarea
+    size: small
+  address:
+    label: Adresse & Email
+    type: textarea

@@ -1,0 +1,23 @@
+name: field.blocks.text.name
+icon: text
+preview: text
+fields:
+  text:
+    type: writer
+    nodes:
+      - bulletList
+      - orderedList
+    marks:
+      - bold
+      - italic
+      - strike
+      - link
+      - email
+  align:
+    label: Text Ausrichtung
+    type: select
+    default: left
+    options:
+      left: Links
+      center: Mitte
+      right: Rechts

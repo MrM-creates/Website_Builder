@@ -1,0 +1,29 @@
+name: field.blocks.heading.name
+icon: title
+preview: heading
+fields:
+  level:
+    label: field.blocks.heading.level.label
+    type: select
+    options:
+      h1: h1
+      h2: h2
+      h3: h3
+      h4: h4
+      h5: h5
+      h6: h6
+    default: h2
+  text:
+    type: writer
+    nodes: false
+    marks:
+      - italic
+    inline: true
+  align:
+    label: Text Ausrichtung
+    type: select
+    default: left
+    options:
+      left: Links
+      center: Mitte
+      right: Rechts

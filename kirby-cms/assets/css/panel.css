@@ -1,0 +1,150 @@
+/* ==========================================================================
+   Plötzlich Flatsite: Custom Panel Styling für Kirby
+   ========================================================================== */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap');
+
+:root {
+    /* Only override essential typography and accent colors */
+    --font-family-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    --font-family-mono: 'Space Mono', monospace !important;
+
+    --color-focus: #4facfe !important;
+    --color-focus-outline: rgba(79, 172, 254, 0.2) !important;
+
+    --rounded: 8px !important;
+}
+
+/* Force Dark Mode across the entire HTML of the iframe */
+html {
+    background-color: #050505 !important;
+    color-scheme: dark !important;
+}
+
+/* Fallback: if data-theme doesn't catch quickly, try to map standard UI colors */
+:root {
+    --color-background-screen: #050505 !important;
+    --color-background: #121212 !important;
+    --color-white: #1e1e1e !important;
+    /* Boxes, Headers */
+    --color-light: #2a2a2a !important;
+    /* Slight highlights */
+    --color-text-light: #a0a0a0 !important;
+    --color-text: #ffffff !important;
+    --color-border: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Base Body Modifications */
+.k-panel {
+    background: var(--color-background-screen) !important;
+    font-family: var(--font-family-sans) !important;
+}
+
+/* Hide Unwanted UI Elements (Menu, Header branding) */
+.k-topbar {
+    background: var(--color-background-screen) !important;
+    border-bottom: 1px solid var(--color-border) !important;
+    box-shadow: none !important;
+}
+
+.k-topbar-breadcrumb {
+    color: var(--color-text) !important;
+}
+
+.k-topbar-button {
+    color: var(--color-text-dimmed) !important;
+}
+
+.k-topbar-button:hover {
+    color: var(--color-text) !important;
+}
+
+.k-panel-menu {
+    background: var(--color-background) !important;
+    border-right: 1px solid var(--color-border) !important;
+}
+
+.k-panel-menu-item {
+    color: var(--color-text-dimmed) !important;
+}
+
+.k-panel-menu-item[aria-current="page"] {
+    color: var(--color-text) !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+}
+
+
+
+.k-headline[data-size="huge"] {
+    font-family: var(--font-family-sans) !important;
+    font-weight: 700 !important;
+    letter-spacing: -1px !important;
+    color: var(--color-text) !important;
+}
+
+/* Cards & Lists (Pages List etc.) */
+.k-list-item {
+    background: var(--color-background) !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: var(--rounded) !important;
+    margin-bottom: 0.5rem !important;
+    box-shadow: none !important;
+}
+
+.k-list-item:hover {
+    border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.k-list-item-text {
+    color: var(--color-text) !important;
+    font-weight: 500 !important;
+}
+
+.k-list-item-info {
+    color: var(--color-text-dimmed) !important;
+}
+
+/* Input Fields & Forms */
+.k-input {
+    background: rgba(0, 0, 0, 0.2) !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: var(--rounded) !important;
+    color: var(--color-text) !important;
+}
+
+.k-text-input {
+    background: transparent !important;
+    color: var(--color-text) !important;
+}
+
+.k-input:focus-within {
+    border-color: var(--color-focus) !important;
+    box-shadow: 0 0 0 2px var(--color-focus-outline) !important;
+}
+
+/* Buttons */
+.k-button[data-theme="positive"] {
+    background: var(--color-focus) !important;
+    color: #000 !important;
+    font-family: var(--font-family-mono) !important;
+    font-weight: 700 !important;
+    border-radius: 50px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+}
+
+.k-button[data-theme="positive"]:hover {
+    background: #e0e0e0 !important;
+}
+
+/* Modals / Dialogs */
+.k-dialog {
+    background: rgba(18, 18, 18, 0.95) !important;
+    backdrop-filter: blur(20px) !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: 12px !important;
+}
+
+/* Hide all left menu items except Site (Portfolios & Seiten) */
+.k-panel-menu-item:not([href$="site"]) {
+    display: none !important;
+}

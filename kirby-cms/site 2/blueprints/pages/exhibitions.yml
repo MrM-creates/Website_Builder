@@ -1,0 +1,19 @@
+title: Exhibitions
+columns:
+  - width: 1/1
+    sections:
+      info:
+        type: fields
+        fields:
+          text:
+            label: Einleitungstext
+            type: textarea
+            size: small
+      exhibitionList:
+        type: pages
+        headline: Ausstellungen
+        templates:
+          - album
+        create: album
+        status: all
+        layout: list

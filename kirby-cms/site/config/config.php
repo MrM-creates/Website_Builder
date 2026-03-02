@@ -1,0 +1,40 @@
+<?php
+return [
+    'debug' => false,
+    'panel' => [
+        'install' => true,
+        'frame' => true,
+        'css' => 'assets/css/panel.css'
+    ],
+    'api' => [
+        'csrf' => '' // disable strict CSRF port matching for local iframe dev
+    ],
+    // Default session cookie settings applied natively by Kirby
+    'routes' => [
+        [
+            'pattern' => '(:all)',
+            'method' => 'HEAD',
+            'action' => function () {
+                return new \Kirby\Cms\Response('OK', 'text/plain', 200);
+            }
+        ],
+        [
+            'pattern' => 'sitemap.xml',
+            'action' => function () {
+                $pages = site()->pages()->index();
+                // Filter excluding templates if necessary, e.g. error page
+                $ignore = kirby()->option('sitemap.ignore', ['error']);
+
+                $content = snippet('sitemap', ['pages' => $pages, 'ignore' => $ignore], true);
+
+                return new Kirby\Cms\Response($content, 'application/xml');
+            }
+        ],
+        [
+            'pattern' => 'sitemap',
+            'action' => function () {
+                return go('sitemap.xml', 301);
+            }
+        ]
+    ]
+];

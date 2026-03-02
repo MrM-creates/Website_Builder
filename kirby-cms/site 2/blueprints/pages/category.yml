@@ -1,0 +1,35 @@
+title: Portfolio Category
+
+columns:
+  - width: 1/3
+    sections:
+      info:
+        type: fields
+        fields:
+          title:
+            label: Title
+            type: text
+          text:
+            label: Description
+            type: textarea
+            size: large
+          cover:
+            label: Category Cover Image
+            type: files
+            max: 1
+            query: page.images
+            uploads: image
+
+  - width: 2/3
+    sections:
+      albums:
+        type: pages
+        headline: Alben in dieser Kategorie (z.B. Farbig, Schwarzweiss)
+        templates:
+          - album
+        create: album
+        status: all
+        layout: cards
+        image:
+          cover: true
+          ratio: 3/2

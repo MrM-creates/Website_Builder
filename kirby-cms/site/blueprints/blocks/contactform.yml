@@ -1,0 +1,11 @@
+name: Kontaktformular
+icon: email
+preview: fields
+fields:
+  info:
+    type: info
+    text: Das Kontaktformular wird hier eingefuegt und nimmt automatisch die Breite der Spalte an. Es sendet Mitteilungen an die in den allgemeinen Seiteneinstellungen definierte E-Mail-Adresse.
+  buttonText:
+    label: Text fuer Senden-Button
+    type: text
+    default: Nachricht Senden
