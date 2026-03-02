@@ -9,6 +9,13 @@ return [
     'api' => [
         'csrf' => '' // disable strict CSRF port matching for local iframe dev
     ],
+    'session' => [
+        'durationNormal' => 7200, // 2 hours
+        'durationLong' => 1209600, // 2 weeks
+        'timeout' => 1800, // 30 min idle
+        'cookieName' => 'kirby_session',
+        'gcInterval' => 100,
+    ],
     // Default session cookie settings applied natively by Kirby
     'routes' => [
         [
