@@ -77,27 +77,37 @@ const DEFAULT_PAGES = [
 function MiniSitePreview({ themeKey, colorIndex }) {
   const theme = THEMES[themeKey];
   const color = getColor(themeKey, colorIndex);
+  const isDark = color.bg.toLowerCase() < '#888';
+  const navBorder = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)';
+  const heroImgBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
   return (
-    <div className={`mini-site-preview ${theme.previewClass}`} style={{ borderRadius: '8px', overflow: 'hidden', aspectRatio: '16/10', border: '1px solid var(--border-color)' }}>
+    <div className={`mini-site-preview ${theme.previewClass}`} style={{
+      borderRadius: '8px', overflow: 'hidden', aspectRatio: '16/10',
+      border: '1px solid var(--border-color)',
+      background: color.bg, color: color.text
+    }}>
       {/* Mini Nav */}
-      <div className="ms-nav" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', fontSize: '7px' }}>
-        <div className="ms-logo" style={{ fontWeight: 'bold', fontSize: '8px' }}>Logo</div>
+      <div className="ms-nav" style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '8px 12px', fontSize: '7px', borderBottom: `1px solid ${navBorder}`
+      }}>
+        <div className="ms-logo" style={{ fontWeight: 'bold', fontSize: '8px', color: color.text }}>Logo</div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <div className="ms-nav-item" style={{ width: '20px', height: '3px', background: 'currentColor', opacity: 0.4, borderRadius: '2px' }}></div>
-          <div className="ms-nav-item" style={{ width: '20px', height: '3px', background: 'currentColor', opacity: 0.4, borderRadius: '2px' }}></div>
-          <div className="ms-nav-item" style={{ width: '20px', height: '3px', background: 'currentColor', opacity: 0.4, borderRadius: '2px' }}></div>
+          <div style={{ width: '20px', height: '3px', background: color.text, opacity: 0.4, borderRadius: '2px' }}></div>
+          <div style={{ width: '20px', height: '3px', background: color.text, opacity: 0.4, borderRadius: '2px' }}></div>
+          <div style={{ width: '20px', height: '3px', background: color.text, opacity: 0.4, borderRadius: '2px' }}></div>
         </div>
       </div>
       {/* Mini Hero Section */}
       <div className="ms-hero" style={{ display: 'flex', gap: '8px', padding: '10px 12px', flex: 1 }}>
         <div className="ms-hero-text" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '4px' }}>
-          <div className="ms-title" style={{ width: '70%', height: '10px', background: 'currentColor', opacity: 0.8, borderRadius: '2px' }}></div>
-          <div className="ms-subtitle" style={{ width: '50%', height: '5px', background: 'currentColor', opacity: 0.3, borderRadius: '2px' }}></div>
+          <div className="ms-title" style={{ width: '70%', height: '10px', background: color.text, opacity: 0.8, borderRadius: '2px' }}></div>
+          <div className="ms-subtitle" style={{ width: '50%', height: '5px', background: color.text, opacity: 0.3, borderRadius: '2px' }}></div>
         </div>
-        <div className="ms-hero-img" style={{ flex: 1, background: 'currentColor', opacity: 0.1, borderRadius: '4px' }}></div>
+        <div className="ms-hero-img" style={{ flex: 1, background: heroImgBg, borderRadius: '4px' }}></div>
       </div>
       {/* Color accent bar */}
-      <div style={{ height: '3px', background: color.accent, marginTop: 'auto' }}></div>
+      <div style={{ height: '4px', background: color.accent, marginTop: 'auto' }}></div>
     </div>
   );
 }
@@ -109,34 +119,45 @@ function MiniSitePreview({ themeKey, colorIndex }) {
 function LivePreview({ themeKey, colorIndex, projectName }) {
   const theme = THEMES[themeKey];
   const color = getColor(themeKey, colorIndex);
+  const isDark = color.bg.toLowerCase() < '#888';
+  const subtleText = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)';
+  const cardBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+  const heroBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+  const navBorder = isDark ? `2px solid ${color.accent}` : `1px solid rgba(0,0,0,0.08)`;
   return (
-    <div className={`live-preview-container ${theme.themeClass}`} style={{ borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)', minHeight: '300px' }}>
+    <div className={`live-preview-container ${theme.themeClass}`} style={{
+      borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)',
+      minHeight: '300px', background: color.bg, color: color.text
+    }}>
       {/* Navigation */}
-      <div className="lp-nav">
-        <div className="lp-logo">{projectName || 'Mein Portfolio'}</div>
+      <div className="lp-nav" style={{ borderBottom: navBorder }}>
+        <div className="lp-logo" style={{ color: color.accent }}>{projectName || 'Mein Portfolio'}</div>
         <div className="lp-links">
-          <span className="lp-link">Portfolio</span>
-          <span className="lp-link">Über mich</span>
-          <span className="lp-link">Kontakt</span>
+          <span className="lp-link" style={{ color: color.text }}>Portfolio</span>
+          <span className="lp-link" style={{ color: color.text }}>Über mich</span>
+          <span className="lp-link" style={{ color: color.text }}>Kontakt</span>
         </div>
       </div>
       {/* Hero */}
       <div className="lp-main">
         <div className="lp-hero">
           <div className="lp-hero-content">
-            <h1 className="lp-h1">Willkommen</h1>
-            <p className="lp-p">Entdecke meine Arbeiten und lass dich inspirieren.</p>
-            <button className="lp-btn" style={{ borderColor: color.accent, color: color.accent === '#4facfe' ? undefined : color.accent }}>Mehr erfahren</button>
+            <h1 className="lp-h1" style={{ color: color.text }}>Willkommen</h1>
+            <p className="lp-p" style={{ color: subtleText }}>Entdecke meine Arbeiten und lass dich inspirieren.</p>
+            <button className="lp-btn" style={{
+              borderColor: color.accent, color: isDark ? color.bg : '#fff',
+              background: color.accent,
+            }}>Mehr erfahren</button>
           </div>
-          <div className="lp-hero-image" style={{ minHeight: '200px' }}>
+          <div className="lp-hero-image" style={{ minHeight: '200px', background: heroBg, color: subtleText }}>
             Bild
           </div>
         </div>
         {/* Grid */}
         <div className="lp-feature-grid">
-          <div className="lp-card"></div>
-          <div className="lp-card"></div>
-          <div className="lp-card"></div>
+          <div className="lp-card" style={{ background: cardBg }}></div>
+          <div className="lp-card" style={{ background: cardBg }}></div>
+          <div className="lp-card" style={{ background: cardBg }}></div>
         </div>
       </div>
     </div>
@@ -718,7 +739,7 @@ function App() {
             {/* Kirby Editor Iframe */}
             {kirbyReady ? (
               <iframe
-                src="/panel"
+                src="http://localhost:8000/panel"
                 style={{ width: '100%', flex: 1, border: 'none', minHeight: '600px' }}
                 title="Kirby CMS Editor"
               />
