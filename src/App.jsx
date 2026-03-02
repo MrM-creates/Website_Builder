@@ -236,8 +236,16 @@ function App() {
           long: true
         })
       });
-      if (res.ok) console.log('Kirby Auto-Login erfolgreich');
-    } catch (e) { /* silent */ }
+      if (res.ok) {
+        console.log('Kirby Auto-Login erfolgreich');
+      } else {
+        console.log('Kirby Auto-Login fehlgeschlagen:', res.status);
+      }
+    } catch (e) {
+      console.log('Kirby Auto-Login Fehler:', e.message);
+    }
+    // Small delay to let session cookie propagate
+    await new Promise(r => setTimeout(r, 500));
     setKirbyReady(true);
   };
 
