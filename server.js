@@ -224,28 +224,33 @@ app.post('/api/ensure-account', (req, res) => {
 // ENDPOINT: AUTO-LOGIN (Authenticate against local Kirby API)
 app.post('/api/auto-login', async (req, res) => {
     try {
-        // Try to authenticate against the local Kirby instance
         const loginRes = await fetch('http://localhost:8000/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 email: 'admin@flatsite.app',
-                password: 'flatsite2026'
+                password: 'flatsite2026',
+                long: true
             })
         });
 
+        // Forward the session cookie regardless of body parsing
+        const setCookie = loginRes.headers.get('set-cookie');
+        if (setCookie) {
+            res.setHeader('Set-Cookie', setCookie);
+        }
+
         if (loginRes.ok) {
-            // Forward the session cookie to the client
-            const setCookie = loginRes.headers.get('set-cookie');
-            if (setCookie) {
-                res.setHeader('Set-Cookie', setCookie);
-            }
-            const data = await loginRes.json();
             console.log('Kirby Auto-Login erfolgreich.');
-            res.json({ success: true, data });
+            res.json({ success: true });
         } else {
-            console.log('Kirby Auto-Login fehlgeschlagen (Account muss evtl. noch manuell eingerichtet werden).');
-            res.json({ success: false, message: 'Login fehlgeschlagen – bitte manuell einloggen' });
+            let msg = 'Login fehlgeschlagen';
+            try {
+                const data = await loginRes.json();
+                msg = data.message || msg;
+            } catch (e) { /* body not JSON */ }
+            console.log('Kirby Auto-Login fehlgeschlagen:', msg);
+            res.json({ success: false, message: msg });
         }
     } catch (err) {
         console.log('Kirby Auto-Login: Server noch nicht bereit oder Fehler:', err.message);

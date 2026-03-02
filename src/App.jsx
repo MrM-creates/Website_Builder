@@ -202,6 +202,7 @@ function App() {
   const [exportResult, setExportResult] = useState('');
   const [kirbyReady, setKirbyReady] = useState(false);
   const [isSettingUp, setIsSettingUp] = useState(false);
+  const [setupDone, setSetupDone] = useState(false);
 
   // Refs
   const editInputRef = useRef(null);
@@ -223,11 +224,20 @@ function App() {
 
   /* ---- Kirby Server & Auto-Login ---- */
   const startKirbyAndLogin = async () => {
-    // PHP server is already running via `npm run dev` (concurrently)
-    // We just need to wait a moment and then show the panel
+    // Login via Vite proxy → Kirby API (same origin = no CORS, cookie set correctly)
     try {
-      await fetch('http://localhost:3001/api/auto-login', { method: 'POST' });
-    } catch (e) { /* silent – login might not work but panel will still show */ }
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          email: 'admin@flatsite.app',
+          password: 'flatsite2026',
+          long: true
+        })
+      });
+      if (res.ok) console.log('Kirby Auto-Login erfolgreich');
+    } catch (e) { /* silent */ }
     setKirbyReady(true);
   };
 
@@ -266,6 +276,7 @@ function App() {
       console.error('Setup error:', err);
     }
     setIsSettingUp(false);
+    setSetupDone(true);
     setStep('editor');
   };
 
@@ -627,8 +638,8 @@ function App() {
 
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: '3rem' }}>
               <button className="btn-primary" style={{ padding: '1rem 3rem' }}
-                onClick={() => setStep('account')}>
-                Weiter zum Hosting
+                onClick={() => setStep(setupDone ? 'editor' : 'account')}>
+                {setupDone ? 'Zurück zur Übersicht' : 'Weiter zum Hosting'}
               </button>
             </div>
           </div>
@@ -739,7 +750,7 @@ function App() {
             {/* Kirby Editor Iframe */}
             {kirbyReady ? (
               <iframe
-                src="http://localhost:8000/panel"
+                src="/panel"
                 style={{ width: '100%', flex: 1, border: 'none', minHeight: '600px' }}
                 title="Kirby CMS Editor"
               />

@@ -5,9 +5,24 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/panel': 'http://localhost:8000',
-      '/api': 'http://localhost:8000',
-      '/media': 'http://localhost:8000'
+      '/panel': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        followRedirects: true,
+        cookieDomainRewrite: 'localhost'
+      },
+      '/api': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      },
+      '/media': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      },
+      '/assets': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
+      }
     }
   }
 })
