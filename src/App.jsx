@@ -255,6 +255,12 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: 'admin@flatsite.app', password: 'flatsite2026' }),
       });
+      // Sync project name to Kirby site title for Panel overview/header
+      await fetch('http://localhost:3001/api/update-site-title', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: projectName }),
+      });
       // Create pages in Kirby filesystem
       for (const page of pages.filter(p => p.selected && p.id !== 'home')) {
         await fetch('http://localhost:3001/api/create-page', {

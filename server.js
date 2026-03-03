@@ -163,6 +163,30 @@ const ensureAdminAccount = (accountsDir, { email = DEFAULT_ADMIN_EMAIL, password
     };
 };
 
+const updateSiteTitleInContent = (contentDir, title) => {
+    const siteFile = path.join(contentDir, 'site.txt');
+    const safeTitle = (title || '').trim() || 'Meine Website';
+
+    if (!fs.existsSync(contentDir)) {
+        fs.mkdirSync(contentDir, { recursive: true });
+    }
+
+    if (!fs.existsSync(siteFile)) {
+        fs.writeFileSync(siteFile, `Title: ${safeTitle}\n`, 'utf-8');
+        return;
+    }
+
+    const current = fs.readFileSync(siteFile, 'utf-8');
+
+    if (/^Title:/m.test(current)) {
+        const updated = current.replace(/^Title:.*$/m, `Title: ${safeTitle}`);
+        fs.writeFileSync(siteFile, updated, 'utf-8');
+    } else {
+        const updated = `Title: ${safeTitle}\n\n----\n\n${current}`;
+        fs.writeFileSync(siteFile, updated, 'utf-8');
+    }
+};
+
 // The intelligent Kirby Proxy
 // Rewrite HEAD to GET to prevent the PHP 8 Built-in Server from crashing (500 Error Framebusting bug)
 // State to keep track of the running PHP server
@@ -292,6 +316,20 @@ app.post('/api/update-theme', (req, res) => {
     } catch (err) {
         console.error('Fehler beim Aktualisieren des CSS:', err);
         res.status(500).json({ error: 'Fehler beim Speichern der Farben' });
+    }
+});
+
+// ENDPOINT: UPDATE SITE TITLE
+app.post('/api/update-site-title', (req, res) => {
+    const { title } = req.body ?? {};
+    const contentDir = path.join(__dirname, 'kirby-cms', 'content');
+
+    try {
+        updateSiteTitleInContent(contentDir, title);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Fehler beim Aktualisieren des Site-Titels:', err);
+        res.status(500).json({ error: 'Fehler beim Speichern des Site-Titels' });
     }
 });
 
