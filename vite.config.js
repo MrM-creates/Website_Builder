@@ -7,9 +7,7 @@ export default defineConfig({
     proxy: {
       '/panel': {
         target: 'http://localhost:8000',
-        changeOrigin: true,
-        followRedirects: true,
-        cookieDomainRewrite: 'localhost'
+        changeOrigin: true
       },
       '/api/auto-login': {
         target: 'http://localhost:3001',

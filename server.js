@@ -6,6 +6,7 @@ import { exec, spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import crypto from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,6 +16,152 @@ const PORT = 3001;
 
 app.use(cors());
 app.use(express.json());
+
+const DEFAULT_ADMIN_EMAIL = 'admin@flatsite.app';
+const DEFAULT_ADMIN_PASSWORD = 'flatsite2026';
+const DEFAULT_ADMIN_NAME = 'Flatsite Admin';
+const DEFAULT_ADMIN_LANGUAGE = 'de';
+const DEFAULT_ADMIN_ROLE = 'admin';
+const DEFAULT_ADMIN_BCRYPT = '$2y$12$KtDqJZUN.tjtrv9dktoYS.4F6PYxZtEvM0t3rxGzEfjQGg5ln0lBK';
+
+const parseField = (content, key) => {
+    const match = content.match(new RegExp(`^${key}:\\s*(.+)$`, 'mi'));
+    return match?.[1]?.trim() || null;
+};
+
+const parseUserTxt = (content) => ({
+    email: parseField(content, 'Email'),
+    name: parseField(content, 'Name'),
+    language: parseField(content, 'Language'),
+    role: parseField(content, 'Role')
+});
+
+const parseIndexPhp = (content) => {
+    const read = (key) => {
+        const match = content.match(new RegExp(`['"]${key}['"]\\s*=>\\s*['"]([^'"]*)['"]`, 'i'));
+        return match?.[1]?.trim() || null;
+    };
+
+    return {
+        email: read('email'),
+        name: read('name'),
+        language: read('language'),
+        role: read('role')
+    };
+};
+
+const phpEscape = (value = '') =>
+    String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+const buildAccountIndexPhp = ({ email, name, language, role }) => `<?php
+
+return [
+    'email' => '${phpEscape(email)}',
+    'language' => '${phpEscape(language)}',
+    'name' => '${phpEscape(name)}',
+    'role' => '${phpEscape(role)}'
+];
+`;
+
+const buildUserTxt = ({ email, name, language, role, passwordHash }) => `Email: ${email}
+
+----
+
+Name: ${name}
+
+----
+
+Language: ${language}
+
+----
+
+Role: ${role}
+
+----
+
+Password: ${passwordHash}
+`;
+
+const ensureAdminAccountFiles = (accountDir, { email, name, language, role, passwordHash }) => {
+    fs.mkdirSync(accountDir, { recursive: true });
+
+    fs.writeFileSync(
+        path.join(accountDir, 'index.php'),
+        buildAccountIndexPhp({ email, name, language, role }),
+        'utf-8'
+    );
+
+    fs.writeFileSync(path.join(accountDir, '.htpasswd'), `${passwordHash}\n`, 'utf-8');
+    fs.writeFileSync(
+        path.join(accountDir, 'user.txt'),
+        buildUserTxt({ email, name, language, role, passwordHash }),
+        'utf-8'
+    );
+};
+
+const findAdminAccount = (accountsDir) => {
+    if (!fs.existsSync(accountsDir)) {
+        return null;
+    }
+
+    for (const entry of fs.readdirSync(accountsDir)) {
+        if (entry.startsWith('.')) continue;
+
+        const accountDir = path.join(accountsDir, entry);
+        if (!fs.statSync(accountDir).isDirectory()) continue;
+
+        const indexPath = path.join(accountDir, 'index.php');
+        const userPath = path.join(accountDir, 'user.txt');
+
+        let indexData = {};
+        let userData = {};
+
+        if (fs.existsSync(indexPath)) {
+            indexData = parseIndexPhp(fs.readFileSync(indexPath, 'utf-8'));
+        }
+
+        if (fs.existsSync(userPath)) {
+            userData = parseUserTxt(fs.readFileSync(userPath, 'utf-8'));
+        }
+
+        const role = (indexData.role || userData.role || '').toLowerCase();
+        if (role !== 'admin') continue;
+
+        return {
+            id: entry,
+            email: indexData.email || userData.email || DEFAULT_ADMIN_EMAIL,
+            name: indexData.name || userData.name || DEFAULT_ADMIN_NAME,
+            language: indexData.language || userData.language || DEFAULT_ADMIN_LANGUAGE,
+            role: DEFAULT_ADMIN_ROLE
+        };
+    }
+
+    return null;
+};
+
+const ensureAdminAccount = (accountsDir, { email = DEFAULT_ADMIN_EMAIL, password = DEFAULT_ADMIN_PASSWORD } = {}) => {
+    fs.mkdirSync(accountsDir, { recursive: true });
+
+    const admin = findAdminAccount(accountsDir);
+    const accountId = admin?.id || crypto.randomBytes(4).toString('hex');
+    const accountDir = path.join(accountsDir, accountId);
+
+    const accountData = {
+        email: admin?.email || email,
+        name: admin?.name || DEFAULT_ADMIN_NAME,
+        language: admin?.language || DEFAULT_ADMIN_LANGUAGE,
+        role: DEFAULT_ADMIN_ROLE,
+        passwordHash: DEFAULT_ADMIN_BCRYPT
+    };
+
+    ensureAdminAccountFiles(accountDir, accountData);
+
+    return {
+        id: accountId,
+        email: accountData.email,
+        password
+    };
+};
 
 // The intelligent Kirby Proxy
 // Rewrite HEAD to GET to prevent the PHP 8 Built-in Server from crashing (500 Error Framebusting bug)
@@ -179,42 +326,14 @@ app.post('/api/create-page', express.json(), (req, res) => {
 });
 
 // ENDPOINT: ENSURE KIRBY ACCOUNT EXISTS (Invisible to the user)
-import crypto from 'crypto';
-
 app.post('/api/ensure-account', (req, res) => {
-    const { email = 'admin@flatsite.app', password = 'flatsite2026' } = req.body;
+    const { email = DEFAULT_ADMIN_EMAIL, password = DEFAULT_ADMIN_PASSWORD } = req.body ?? {};
     const accountsDir = path.join(__dirname, 'kirby-cms', 'site', 'accounts');
 
     try {
-        // Check if any account folder already exists
-        if (fs.existsSync(accountsDir)) {
-            const existing = fs.readdirSync(accountsDir).filter(f => !f.startsWith('.'));
-            if (existing.length > 0) {
-                console.log('Kirby Account existiert bereits.');
-                return res.json({ success: true, message: 'Account existiert bereits' });
-            }
-        }
-
-        // Create accounts directory if needed
-        if (!fs.existsSync(accountsDir)) {
-            fs.mkdirSync(accountsDir, { recursive: true });
-        }
-
-        // Generate a Kirby-compatible account folder name (random hash)
-        const folderName = crypto.randomBytes(4).toString('hex');
-        const accountDir = path.join(accountsDir, folderName);
-        fs.mkdirSync(accountDir, { recursive: true });
-
-        // Kirby stores accounts as .txt files with YAML-like content
-        // The password needs to be hashed by Kirby itself on first login
-        // We write a minimal account file and let Kirby handle password hashing
-        // Use the pre-generated bcrypt hash for 'flatsite2026'
-        const bcryptHash = '$2y$12$KtDqJZUN.tjtrv9dktoYS.4F6PYxZtEvM0t3rxGzEfjQGg5ln0lBK';
-        const accountContent = `Email: ${email}\n\n----\n\nName: Flatsite Admin\n\n----\n\nLanguage: de\n\n----\n\nRole: admin\n\n----\n\nPassword: ${bcryptHash}\n`;
-        fs.writeFileSync(path.join(accountDir, 'user.txt'), accountContent, 'utf-8');
-
-        console.log(`Kirby Account angelegt: ${email} in ${folderName}`);
-        res.json({ success: true, message: 'Account erfolgreich angelegt' });
+        const account = ensureAdminAccount(accountsDir, { email, password });
+        console.log(`Kirby Admin-Account bereit: ${account.email} (${account.id})`);
+        res.json({ success: true, message: 'Account ist bereit', accountId: account.id, email: account.email });
 
     } catch (err) {
         console.error('Fehler beim Erstellen des Accounts:', err);
@@ -223,79 +342,49 @@ app.post('/api/ensure-account', (req, res) => {
 });
 
 
-// ENDPOINT: AUTO-LOGIN (Direct filesystem session – bypasses PHP Output Guard)
+// ENDPOINT: AUTO-LOGIN (Kirby-native login via API and forwarded session cookie)
 app.post('/api/auto-login', async (req, res) => {
     try {
-        const sessionsDir = path.join(__dirname, 'kirby-cms', 'site', 'sessions');
         const accountsDir = path.join(__dirname, 'kirby-cms', 'site', 'accounts');
+        const account = ensureAdminAccount(accountsDir, {
+            email: DEFAULT_ADMIN_EMAIL,
+            password: DEFAULT_ADMIN_PASSWORD
+        });
 
-        // Ensure sessions directory exists
-        if (!fs.existsSync(sessionsDir)) {
-            fs.mkdirSync(sessionsDir, { recursive: true });
+        const loginResponse = await fetch('http://localhost:8000/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                email: account.email,
+                password: account.password,
+                long: true
+            })
+        });
+
+        let setCookies = [];
+        if (typeof loginResponse.headers.getSetCookie === 'function') {
+            setCookies = loginResponse.headers.getSetCookie();
+        } else if (typeof loginResponse.headers.raw === 'function') {
+            setCookies = loginResponse.headers.raw()['set-cookie'] || [];
+        } else {
+            const single = loginResponse.headers.get('set-cookie');
+            if (single) setCookies = [single];
         }
 
-        // Find admin account ID
-        let adminId = null;
-        if (fs.existsSync(accountsDir)) {
-            for (const entry of fs.readdirSync(accountsDir)) {
-                if (entry.startsWith('.')) continue;
-                const userFile = path.join(accountsDir, entry, 'user.txt');
-                if (fs.existsSync(userFile)) {
-                    const content = fs.readFileSync(userFile, 'utf-8');
-                    if (content.includes('Role: admin')) {
-                        adminId = entry;
-                        break;
-                    }
-                }
-            }
+        if (setCookies.length > 0) {
+            res.setHeader('Set-Cookie', setCookies);
         }
 
-        if (!adminId) {
-            return res.json({ success: false, message: 'Kein Admin-Account gefunden' });
+        if (!loginResponse.ok) {
+            const errorBody = await loginResponse.text();
+            console.error('Auto-Login Fehler (Kirby API):', loginResponse.status, errorBody);
+            return res.status(502).json({
+                success: false,
+                message: `Kirby Login fehlgeschlagen (${loginResponse.status})`
+            });
         }
 
-        // Generate session token components
-        const now = Math.floor(Date.now() / 1000);
-        const duration = 1209600; // 2 weeks
-        const expiryTime = now + duration;
-        const tokenId = crypto.randomBytes(10).toString('hex');   // 20 hex chars
-        const tokenKey = crypto.randomBytes(32).toString('hex');  // 64 hex chars
-        const token = expiryTime + '.' + tokenId + '.' + tokenKey;
-
-        // Build serialized PHP session data with kirby.userId + kirby.csrf
-        const csrfToken = crypto.randomBytes(32).toString('hex'); // 64 hex chars
-        const sessionData = 'a:7:{' +
-            's:9:"startTime";i:' + now + ';' +
-            's:10:"expiryTime";i:' + expiryTime + ';' +
-            's:8:"duration";i:' + duration + ';' +
-            's:7:"timeout";i:1800;' +
-            's:12:"lastActivity";i:' + now + ';' +
-            's:9:"renewable";b:1;' +
-            's:4:"data";a:2:{' +
-            's:12:"kirby.userId";s:' + adminId.length + ':"' + adminId + '";' +
-            's:10:"kirby.csrf";s:64:"' + csrfToken + '";' +
-            '}' +
-            '}';
-
-        // Session file HMAC: sha256 keyed with tokenKey (Session.php)
-        const sessionHmac = crypto.createHmac('sha256', tokenKey).update(sessionData).digest('hex');
-        const sessPath = path.join(sessionsDir, expiryTime + '.' + tokenId + '.sess');
-        fs.writeFileSync(sessPath, sessionHmac + '\n' + sessionData);
-
-        // Cookie value: HMAC + '+' + token (Cookie.php format)
-        // Cookie HMAC: sha1 keyed with same key as config.php cookies.key
-        const cookieHmac = crypto.createHmac('sha1', 'KirbyHttpCookieKey').update(token).digest('hex');
-        const cookieValue = cookieHmac + '+' + token;
-
-        // Set cookie with PHP's setcookie()-compatible format (URL-encodes the + to %2B)
-        res.setHeader('Set-Cookie',
-            'kirby_session=' + encodeURIComponent(cookieValue) +
-            '; expires=' + new Date(expiryTime * 1000).toUTCString() +
-            '; Max-Age=' + duration +
-            '; path=/; HttpOnly; SameSite=Lax'
-        );
-
-        console.log('Auto-Login: Session für', adminId, '(Cookie HMAC+Token Format)');
+        console.log('Auto-Login: Erfolgreich über Kirby API für', account.email);
         res.json({ success: true });
     } catch (err) {
         console.log('Auto-Login Fehler:', err.message);
