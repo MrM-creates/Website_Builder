@@ -223,37 +223,83 @@ app.post('/api/ensure-account', (req, res) => {
 });
 
 
-// ENDPOINT: AUTO-LOGIN (Use Kirby's own API – password now in user.txt)
+// ENDPOINT: AUTO-LOGIN (Direct filesystem session – bypasses PHP Output Guard)
 app.post('/api/auto-login', async (req, res) => {
     try {
-        const loginRes = await fetch('http://localhost:8000/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                email: 'admin@flatsite.app',
-                password: 'flatsite2026',
-                long: true
-            })
-        });
+        const sessionsDir = path.join(__dirname, 'kirby-cms', 'site', 'sessions');
+        const accountsDir = path.join(__dirname, 'kirby-cms', 'site', 'accounts');
 
-        // Forward Kirby's Set-Cookie (correct HMAC+token format)
-        const setCookie = loginRes.headers.get('set-cookie');
-        if (setCookie) {
-            res.setHeader('Set-Cookie', setCookie);
+        // Ensure sessions directory exists
+        if (!fs.existsSync(sessionsDir)) {
+            fs.mkdirSync(sessionsDir, { recursive: true });
         }
 
-        if (loginRes.ok) {
-            console.log('Kirby Auto-Login erfolgreich.');
-            res.json({ success: true });
-        } else {
-            let msg = 'Login fehlgeschlagen';
-            try { const d = await loginRes.json(); msg = d.message || msg; } catch (e) { }
-            console.log('Kirby Auto-Login fehlgeschlagen:', msg);
-            res.json({ success: false, message: msg });
+        // Find admin account ID
+        let adminId = null;
+        if (fs.existsSync(accountsDir)) {
+            for (const entry of fs.readdirSync(accountsDir)) {
+                if (entry.startsWith('.')) continue;
+                const userFile = path.join(accountsDir, entry, 'user.txt');
+                if (fs.existsSync(userFile)) {
+                    const content = fs.readFileSync(userFile, 'utf-8');
+                    if (content.includes('Role: admin')) {
+                        adminId = entry;
+                        break;
+                    }
+                }
+            }
         }
+
+        if (!adminId) {
+            return res.json({ success: false, message: 'Kein Admin-Account gefunden' });
+        }
+
+        // Generate session token components
+        const now = Math.floor(Date.now() / 1000);
+        const duration = 1209600; // 2 weeks
+        const expiryTime = now + duration;
+        const tokenId = crypto.randomBytes(10).toString('hex');   // 20 hex chars
+        const tokenKey = crypto.randomBytes(32).toString('hex');  // 64 hex chars
+        const token = expiryTime + '.' + tokenId + '.' + tokenKey;
+
+        // Build serialized PHP session data with kirby.userId + kirby.csrf
+        const csrfToken = crypto.randomBytes(32).toString('hex'); // 64 hex chars
+        const sessionData = 'a:7:{' +
+            's:9:"startTime";i:' + now + ';' +
+            's:10:"expiryTime";i:' + expiryTime + ';' +
+            's:8:"duration";i:' + duration + ';' +
+            's:7:"timeout";i:1800;' +
+            's:12:"lastActivity";i:' + now + ';' +
+            's:9:"renewable";b:1;' +
+            's:4:"data";a:2:{' +
+            's:12:"kirby.userId";s:' + adminId.length + ':"' + adminId + '";' +
+            's:10:"kirby.csrf";s:64:"' + csrfToken + '";' +
+            '}' +
+            '}';
+
+        // Session file HMAC: sha256 keyed with tokenKey (Session.php)
+        const sessionHmac = crypto.createHmac('sha256', tokenKey).update(sessionData).digest('hex');
+        const sessPath = path.join(sessionsDir, expiryTime + '.' + tokenId + '.sess');
+        fs.writeFileSync(sessPath, sessionHmac + '\n' + sessionData);
+
+        // Cookie value: HMAC + '+' + token (Cookie.php format)
+        // Cookie HMAC: sha1 keyed with same key as config.php cookies.key
+        const cookieHmac = crypto.createHmac('sha1', 'KirbyHttpCookieKey').update(token).digest('hex');
+        const cookieValue = cookieHmac + '+' + token;
+
+        // Set cookie with PHP's setcookie()-compatible format (URL-encodes the + to %2B)
+        res.setHeader('Set-Cookie',
+            'kirby_session=' + encodeURIComponent(cookieValue) +
+            '; expires=' + new Date(expiryTime * 1000).toUTCString() +
+            '; Max-Age=' + duration +
+            '; path=/; HttpOnly; SameSite=Lax'
+        );
+
+        console.log('Auto-Login: Session für', adminId, '(Cookie HMAC+Token Format)');
+        res.json({ success: true });
     } catch (err) {
-        console.log('Kirby Auto-Login Fehler:', err.message);
-        res.json({ success: false, message: 'Kirby Server noch nicht bereit' });
+        console.log('Auto-Login Fehler:', err.message);
+        res.json({ success: false, message: err.message });
     }
 });
 

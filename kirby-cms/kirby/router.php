@@ -1,4 +1,5 @@
 <?php
+error_log("ROUTER: uri=" . $_SERVER['REQUEST_URI'] . " doc=" . $_SERVER['DOCUMENT_ROOT']);
 
 // prepend a fake host to ensure that PHP can parse the path even if it contains weird stuff;
 // afterwards just take the plain path back out from the parsed result
@@ -9,9 +10,9 @@ $uri = urldecode($uri);
 // disclosure of the existence of files outside the document root
 $path = $_SERVER['DOCUMENT_ROOT'] . '/' . ltrim($uri, '/');
 if (
-	$uri !== '/' &&
-	file_exists($path) === true &&
-	substr(realpath($path), 0, strlen($_SERVER['DOCUMENT_ROOT'])) === $_SERVER['DOCUMENT_ROOT']
+$uri !== '/' &&
+file_exists($path) === true &&
+substr(realpath($path), 0, strlen($_SERVER['DOCUMENT_ROOT'])) === $_SERVER['DOCUMENT_ROOT']
 ) {
 	return false;
 }

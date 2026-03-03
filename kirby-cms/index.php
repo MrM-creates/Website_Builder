@@ -15,4 +15,11 @@ header_register_callback(function () {
     header_remove('Content-Security-Policy');
 });
 
-echo (new Kirby)->render();
+try {
+    echo (new Kirby)->render();
+}
+catch (Throwable $e) {
+    error_log("KIRBY CRASH: " . $e->getMessage());
+    error_log("KIRBY CRASH FILE: " . $e->getFile() . ":" . $e->getLine());
+    error_log("KIRBY CRASH TRACE: " . $e->getTraceAsString());
+}

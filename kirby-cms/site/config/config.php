@@ -3,21 +3,20 @@ return [
     'url' => 'http://localhost:5173',
     'debug' => false,
     'panel' => [
-        'install' => true,
+        'install' => false,
         'frame' => true,
         'css' => 'assets/css/panel.css'
     ],
     'api' => [
-        'csrf' => '' // disable strict CSRF port matching for local iframe dev
+        'csrf' => false
     ],
     'session' => [
-        'durationNormal' => 7200, // 2 hours
-        'durationLong' => 1209600, // 2 weeks
-        'timeout' => 1800, // 30 min idle
+        'durationNormal' => 7200,
+        'durationLong' => 1209600,
+        'timeout' => 1800,
         'cookieName' => 'kirby_session',
         'gcInterval' => 100,
     ],
-    // Default session cookie settings applied natively by Kirby
     'routes' => [
         [
             'pattern' => '(:all)',
@@ -30,11 +29,8 @@ return [
             'pattern' => 'sitemap.xml',
             'action' => function () {
                 $pages = site()->pages()->index();
-                // Filter excluding templates if necessary, e.g. error page
                 $ignore = kirby()->option('sitemap.ignore', ['error']);
-
                 $content = snippet('sitemap', ['pages' => $pages, 'ignore' => $ignore], true);
-
                 return new Kirby\Cms\Response($content, 'application/xml');
             }
         ],
