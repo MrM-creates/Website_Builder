@@ -47,7 +47,10 @@
     margin-bottom: 0.35rem !important;
 }
 
-/* Hide left menu items except Site (show only page editing) */
-.k-panel-menu-item:not([href$="site"]) {
+/* Hide Kirby navigation/menu globally (embedded + external panel) */
+.k-panel-menu,
+.k-panel-menu-proxy,
+.k-panel-menu-toggle,
+.k-topbar-signals {
     display: none !important;
 }

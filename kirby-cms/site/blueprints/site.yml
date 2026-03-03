@@ -1,42 +1,19 @@
 title: Site
 
 columns:
-  - width: 2/3
+  - width: 1/1
     sections:
       contentPages:
         type: pages
-        headline: Deine Inhaltsseiten
-        help: Zeigt nur echte, veroeffentlichte Inhaltsseiten (ohne error/Systemseiten).
-        layout: cards
+        headline: Deine Portfolios & Seiten
+        layout: list
         sortable: true
         status: listed
-        sortBy: num asc
-        query: site.children.filterBy("intendedTemplate", "!=", "error")
+        image:
+          query: page.images.first
+          cover: true
         templates:
           - default
           - home
           - about
           - contact
-
-  - width: 1/3
-    sections:
-      content:
-        type: fields
-        fields:
-          email:
-            label: E-Mail Adresse
-            type: email
-            icon: email
-            help: Erscheint links im Footer deines Flatsite-Designs.
-
-          instagram:
-            label: Instagram URL
-            type: url
-            icon: instagram
-            help: Verlinkt das kleine Icon im Footer.
-
-          copyright:
-            label: Copyright Text
-            type: text
-            icon: text
-            help: Wird immer rechts im Footer angezeigt (z.B. "© 2026 Mein Name").

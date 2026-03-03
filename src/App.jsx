@@ -200,9 +200,11 @@ function App() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportResult, setExportResult] = useState('');
+  const [isLive, setIsLive] = useState(false);
   const [kirbyReady, setKirbyReady] = useState(false);
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [setupDone, setSetupDone] = useState(false);
+  const [panelSrc, setPanelSrc] = useState('/panel/site');
 
   // Refs
   const editInputRef = useRef(null);
@@ -219,6 +221,12 @@ function App() {
   useEffect(() => {
     if (step === 'editor' && !kirbyReady) {
       startKirbyAndLogin();
+    }
+  }, [step]);
+
+  useEffect(() => {
+    if (step === 'editor') {
+      setPanelSrc('/panel/site');
     }
   }, [step]);
 
@@ -243,6 +251,10 @@ function App() {
     // Delay to let cookie propagate
     await new Promise(r => setTimeout(r, 500));
     setKirbyReady(true);
+  };
+
+  const openPanelOverview = () => {
+    setPanelSrc(`/panel/site?from=flatsite&ts=${Date.now()}`);
   };
 
   /* ---- Hosting Setup (invisible Kirby account) ---- */
@@ -308,6 +320,7 @@ function App() {
       const data = await res.json();
       if (data.success) {
         setExportResult(data.log || 'Website erfolgreich publiziert!');
+        setIsLive(true);
       } else {
         setExportResult('Fehler: ' + (data.error || 'Unbekannter Fehler'));
       }
@@ -400,11 +413,14 @@ function App() {
               Flatsite
             </div>
             <span style={{
-              background: 'rgba(255,152,0,0.1)', color: '#ff9800', padding: '0.2rem 0.6rem',
+              background: isLive ? 'rgba(140,198,63,0.15)' : 'rgba(255,152,0,0.1)',
+              color: isLive ? '#8cc63f' : '#ff9800',
+              padding: '0.2rem 0.6rem',
               borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase',
-              letterSpacing: '1px', border: '1px solid rgba(255,152,0,0.3)'
+              letterSpacing: '1px',
+              border: isLive ? '1px solid rgba(140,198,63,0.35)' : '1px solid rgba(255,152,0,0.3)'
             }}>
-              Lokal (Entwurf)
+              {isLive ? 'Live' : 'Lokal (Entwurf)'}
             </span>
           </div>
 
@@ -427,23 +443,6 @@ function App() {
             })}
           </div>
 
-          {/* Quick Actions */}
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--surface-color)',
-              padding: '0.4rem 0.8rem', borderRadius: '6px', fontSize: '0.8rem',
-              color: 'var(--text-secondary)', cursor: 'pointer'
-            }} onClick={() => setStep('design')} title="Design ändern">
-              <span>Design:</span>
-              <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
-                {THEMES[selectedDesign]?.name || 'Minimalist'}
-              </span>
-            </div>
-            <button className="btn-primary" style={{ padding: '0.5rem 1.5rem', fontSize: '0.85rem' }}
-              onClick={() => setShowExportModal(true)}>
-              Website publizieren
-            </button>
-          </div>
         </header>
       )}
 
@@ -694,6 +693,13 @@ function App() {
         {/* ====== STEP: EDITOR / DASHBOARD ====== */}
         {step === 'editor' && (
           <div className="fade-in" style={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div style={{
+              padding: '1rem 2rem',
+              background: 'var(--surface-color)',
+              borderBottom: '1px solid var(--border-color)'
+            }}>
+              <h2 style={{ fontSize: '1.1rem', margin: 0, color: 'var(--text-primary)' }}>Seiten anpassen</h2>
+            </div>
             {/* Dashboard Toolbar */}
             <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -721,6 +727,10 @@ function App() {
 
               {/* Right: Actions */}
               <div style={{ display: 'flex', gap: '0.8rem' }}>
+                <button className="btn-outline" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}
+                  onClick={openPanelOverview}>
+                  Seitenübersicht
+                </button>
                 <button className="btn-outline" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}
                   onClick={() => setStep('provider')}>
                   Providerwechsel
@@ -760,7 +770,7 @@ function App() {
             {/* Kirby Editor Iframe */}
             {kirbyReady ? (
               <iframe
-                src="/panel"
+                src={panelSrc}
                 style={{ width: '100%', flex: 1, border: 'none', minHeight: '600px' }}
                 title="Kirby CMS Editor"
               />

@@ -187,6 +187,41 @@ const updateSiteTitleInContent = (contentDir, title) => {
     }
 };
 
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const findExistingPageDirName = (contentRoot, slug) => {
+    if (!fs.existsSync(contentRoot)) return null;
+
+    const slugPattern = new RegExp(`^(?:\\d+_)?${escapeRegex(slug)}$`);
+
+    for (const entry of fs.readdirSync(contentRoot)) {
+        const fullPath = path.join(contentRoot, entry);
+        if (!fs.statSync(fullPath).isDirectory()) continue;
+        if (entry === 'error') continue;
+        if (slugPattern.test(entry)) return entry;
+    }
+
+    return null;
+};
+
+const nextListedDirName = (contentRoot, slug) => {
+    let maxNum = 0;
+
+    if (fs.existsSync(contentRoot)) {
+        for (const entry of fs.readdirSync(contentRoot)) {
+            const match = entry.match(/^(\d+)_/);
+            if (!match) continue;
+            const num = parseInt(match[1], 10);
+            if (Number.isFinite(num) && num > maxNum) {
+                maxNum = num;
+            }
+        }
+    }
+
+    const nextNum = String(maxNum + 1).padStart(2, '0');
+    return `${nextNum}_${slug}`;
+};
+
 // The intelligent Kirby Proxy
 // Rewrite HEAD to GET to prevent the PHP 8 Built-in Server from crashing (500 Error Framebusting bug)
 // State to keep track of the running PHP server
@@ -340,7 +375,25 @@ app.post('/api/create-page', express.json(), (req, res) => {
         return res.status(400).json({ error: 'Fehlende Parameter: slug oder title' });
     }
 
-    const contentDir = path.join(__dirname, 'kirby-cms', 'content', slug);
+    const contentRoot = path.join(__dirname, 'kirby-cms', 'content');
+    if (!fs.existsSync(contentRoot)) {
+        fs.mkdirSync(contentRoot, { recursive: true });
+    }
+
+    const existingDirName = findExistingPageDirName(contentRoot, slug);
+    let targetDirName = existingDirName ?? nextListedDirName(contentRoot, slug);
+
+    // If page exists as unlisted slug folder, promote it to listed numbering
+    if (existingDirName && /^\d+_/.test(existingDirName) === false) {
+        const promotedDirName = nextListedDirName(contentRoot, slug);
+        fs.renameSync(
+            path.join(contentRoot, existingDirName),
+            path.join(contentRoot, promotedDirName)
+        );
+        targetDirName = promotedDirName;
+    }
+
+    const contentDir = path.join(contentRoot, targetDirName);
     const txtFileName = `default.txt`; // UNIVERSAL TEMPLATE
     const txtFilePath = path.join(contentDir, txtFileName);
 
@@ -350,11 +403,23 @@ app.post('/api/create-page', express.json(), (req, res) => {
             fs.mkdirSync(contentDir, { recursive: true });
         }
 
-        // Minimales Content-File schreiben (ohne UUID, damit Kirby eine neue generiert)
-        const fileContent = `Title: ${title}\n\n----\n\nLayout: []\n`;
-        fs.writeFileSync(txtFilePath, fileContent, 'utf-8');
+        // Do not destroy existing content: update title in place if file exists.
+        if (fs.existsSync(txtFilePath)) {
+            const current = fs.readFileSync(txtFilePath, 'utf-8');
+            let updated = current;
+            if (/^Title:/m.test(updated)) {
+                updated = updated.replace(/^Title:.*$/m, `Title: ${title}`);
+            } else {
+                updated = `Title: ${title}\n\n----\n\n${updated}`;
+            }
+            fs.writeFileSync(txtFilePath, updated, 'utf-8');
+        } else {
+            // Minimales Content-File schreiben (ohne UUID, damit Kirby eine neue generiert)
+            const fileContent = `Title: ${title}\n\n----\n\nLayout: []\n`;
+            fs.writeFileSync(txtFilePath, fileContent, 'utf-8');
+        }
 
-        console.log(`Neue Kirby-Seite angelegt: ${slug}/${txtFileName}`);
+        console.log(`Neue Kirby-Seite angelegt: ${targetDirName}/${txtFileName}`);
         res.json({ success: true, message: 'Seite erfolgreich angelegt' });
 
     } catch (err) {
