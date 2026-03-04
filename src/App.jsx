@@ -70,26 +70,6 @@ const DEFAULT_PAGES = [
   { id: 'contact', title: 'Kontakt', required: false, selected: true },
 ];
 
-const PUBLIC_WEB_ROOT_PATHS = new Set([
-  '/',
-  '/public_html',
-  '/httpdocs',
-  '/www',
-  '/htdocs',
-  '/web',
-  '/html',
-  '/site',
-]);
-const PUBLIC_WEB_ROOT_PREFIXES = new Set([
-  'public_html',
-  'httpdocs',
-  'www',
-  'htdocs',
-  'web',
-  'html',
-  'site',
-]);
-
 const normalizeUrlOrigin = (input) => {
   const raw = String(input || '').trim();
   if (!raw) return '';
@@ -104,42 +84,10 @@ const normalizeUrlOrigin = (input) => {
   }
 };
 
-const normalizeRemotePathForUrl = (input) => {
-  let remotePath = String(input || '').trim();
-  if (!remotePath) return '/';
-  remotePath = remotePath.replace(/\\/g, '/');
-  remotePath = remotePath.replace(/\/{2,}/g, '/');
-  remotePath = remotePath.startsWith('/') ? remotePath : `/${remotePath}`;
-  remotePath = remotePath.length > 1 ? remotePath.replace(/\/$/, '') : remotePath;
-  return remotePath;
-};
-
-const buildLiveWebsiteUrl = ({ siteUrl, remotePath }) => {
+const buildLiveWebsiteUrl = ({ siteUrl }) => {
   const origin = normalizeUrlOrigin(siteUrl);
   if (!origin) return '';
-
-  const normalizedPath = normalizeRemotePathForUrl(remotePath);
-  if (PUBLIC_WEB_ROOT_PATHS.has(normalizedPath.toLowerCase())) {
-    return `${origin}/`;
-  }
-
-  const segments = normalizedPath
-    .split('/')
-    .filter(Boolean)
-    .map((segment) => segment.trim())
-    .filter(Boolean);
-
-  if (segments.length > 0 && PUBLIC_WEB_ROOT_PREFIXES.has(segments[0].toLowerCase())) {
-    segments.shift();
-  }
-
-  if (segments.length === 0) {
-    return `${origin}/`;
-  }
-
-  const encodedPath = segments.map(encodeURIComponent).join('/');
-
-  return `${origin}/${encodedPath}/`;
+  return `${origin}/`;
 };
 
 /* ==========================================================================
@@ -302,7 +250,7 @@ function App() {
     }
   }, [step]);
 
-  const liveWebsiteUrl = buildLiveWebsiteUrl({ siteUrl, remotePath: ftpRemotePath });
+  const liveWebsiteUrl = buildLiveWebsiteUrl({ siteUrl });
 
   /* ---- Kirby Server & Auto-Login ---- */
   const hasActivePanelSession = async () => {

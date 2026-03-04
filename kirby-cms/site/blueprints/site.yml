@@ -9,6 +9,9 @@ columns:
         layout: list
         sortable: true
         status: listed
+        create:
+          - default
+        empty: Noch keine Inhaltsseiten vorhanden.
         image:
           query: page.images.first
           cover: true
