@@ -534,18 +534,21 @@ app.post('/api/start-kirby', (req, res) => {
 
 const parseDeployRequest = (body = {}) => {
     const { host, user, password, port = 21, remotePath = DEFAULT_REMOTE_PATH, siteUrl = '' } = body;
+    const cleanHost = String(host || '').trim();
+    const cleanUser = String(user || '').trim();
+    const cleanPassword = String(password ?? '');
     const parsedPort = parseInt(port, 10) || 21;
     const targetPath = normalizeRemotePath(remotePath);
     const deployOrigin = normalizeSiteUrl(siteUrl);
 
-    if (!host || !user || !password) {
+    if (!cleanHost || !cleanUser || !cleanPassword.trim()) {
         throw new Error('Fehlende FTP Credentials');
     }
 
     return {
-        host,
-        user,
-        password,
+        host: cleanHost,
+        user: cleanUser,
+        password: cleanPassword,
         parsedPort,
         targetPath,
         deployOrigin

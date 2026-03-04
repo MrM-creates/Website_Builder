@@ -70,7 +70,9 @@ const DEFAULT_PAGES = [
   { id: 'contact', title: 'Kontakt', required: false, selected: true },
 ];
 
-const normalizeUrlOrigin = (input) => {
+const HOSTING_DRAFT_STORAGE_KEY = 'flatsite.hosting.v1';
+
+const normalizeWebsiteUrl = (input) => {
   const raw = String(input || '').trim();
   if (!raw) return '';
 
@@ -78,7 +80,24 @@ const normalizeUrlOrigin = (input) => {
   try {
     const parsed = new URL(withScheme);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
-    return parsed.origin;
+    const hostname = parsed.hostname.toLowerCase();
+    const isIp = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname);
+    const isLocal = hostname === 'localhost' || hostname === '127.0.0.1' || isIp;
+    if (!isLocal && !hostname.startsWith('www.')) {
+      parsed.hostname = `www.${hostname}`;
+    }
+    const pathname = parsed.pathname && parsed.pathname !== '/' ? parsed.pathname.replace(/\/+$/, '') : '';
+    return `${parsed.origin}${pathname}`;
+  } catch {
+    return '';
+  }
+};
+
+const normalizeUrlOrigin = (input) => {
+  const normalized = normalizeWebsiteUrl(input);
+  if (!normalized) return '';
+  try {
+    return new URL(normalized).origin;
   } catch {
     return '';
   }
@@ -192,6 +211,15 @@ function App() {
   /* ---- State ---- */
   const [step, setStep] = useState('welcome');
   const [projectName, setProjectName] = useState('');
+  const [hostingDraft] = useState(() => {
+    try {
+      const raw = localStorage.getItem(HOSTING_DRAFT_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return (parsed && typeof parsed === 'object') ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
 
   // Pages
   const [pages, setPages] = useState(DEFAULT_PAGES.map(p => ({ ...p })));
@@ -206,12 +234,12 @@ function App() {
   const [selectedColor, setSelectedColor] = useState(0);
 
   // Hosting
-  const [ftpServer, setFtpServer] = useState('');
-  const [ftpUser, setFtpUser] = useState('');
-  const [ftpPassword, setFtpPassword] = useState('');
-  const [ftpPort, setFtpPort] = useState('21');
-  const [ftpRemotePath, setFtpRemotePath] = useState('/flatsite-test');
-  const [siteUrl, setSiteUrl] = useState('');
+  const [ftpServer, setFtpServer] = useState(() => String(hostingDraft.ftpServer || ''));
+  const [ftpUser, setFtpUser] = useState(() => String(hostingDraft.ftpUser || ''));
+  const [ftpPassword, setFtpPassword] = useState(() => String(hostingDraft.ftpPassword || ''));
+  const [ftpPort, setFtpPort] = useState(() => String(hostingDraft.ftpPort || '21'));
+  const [ftpRemotePath, setFtpRemotePath] = useState(() => String(hostingDraft.ftpRemotePath || '/flatsite-test'));
+  const [siteUrl, setSiteUrl] = useState(() => String(hostingDraft.siteUrl || ''));
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [connectionTestResult, setConnectionTestResult] = useState('');
 
@@ -242,6 +270,21 @@ function App() {
     }
   }, [editingPageId]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(HOSTING_DRAFT_STORAGE_KEY, JSON.stringify({
+        ftpServer,
+        ftpUser,
+        ftpPassword,
+        ftpPort,
+        ftpRemotePath,
+        siteUrl
+      }));
+    } catch {
+      // ignore localStorage write errors
+    }
+  }, [ftpServer, ftpUser, ftpPassword, ftpPort, ftpRemotePath, siteUrl]);
+
   // Start/refresh Kirby session when entering editor
   useEffect(() => {
     if (step === 'editor') {
@@ -250,7 +293,8 @@ function App() {
     }
   }, [step]);
 
-  const liveWebsiteUrl = buildLiveWebsiteUrl({ siteUrl });
+  const normalizedSiteUrl = normalizeWebsiteUrl(siteUrl);
+  const liveWebsiteUrl = buildLiveWebsiteUrl({ siteUrl: normalizedSiteUrl || siteUrl });
 
   /* ---- Kirby Server & Auto-Login ---- */
   const hasActivePanelSession = async () => {
@@ -318,13 +362,6 @@ function App() {
       return true;
     }
 
-    if (wasReady && silentIfReady) {
-      // Keep a working editor visible even if background re-auth fails temporarily.
-      setKirbyReady(true);
-      setKirbyStatusMsg('');
-      return true;
-    }
-
     console.log('Kirby Auto-Login Fehler:', lastError?.message || 'unbekannt');
     setKirbyReady(false);
     setKirbyStatusMsg('Kirby Session konnte nicht aufgebaut werden. Bitte auf "Erneut verbinden" klicken.');
@@ -337,14 +374,29 @@ function App() {
     setPanelSrc(`/panel/site?from=flatsite&ts=${Date.now()}`);
   };
 
-  const handleOpenPublishModal = async () => {
-    await startKirbyAndLogin({ silentIfReady: true });
+  const handleOpenPublishModal = () => {
     setShowExportModal(true);
   };
 
   const openLiveWebsite = () => {
     if (!liveWebsiteUrl) return;
     window.open(liveWebsiteUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const ensureSiteUrlNormalized = () => {
+    const normalized = normalizeWebsiteUrl(siteUrl);
+    if (normalized && normalized !== siteUrl) {
+      setSiteUrl(normalized);
+    }
+    return normalized;
+  };
+
+  const getMissingHostingFields = () => {
+    const missing = [];
+    if (!ftpServer.trim()) missing.push('Server Host / IP');
+    if (!ftpUser.trim()) missing.push('Benutzername');
+    if (!String(ftpPassword || '').trim()) missing.push('Passwort');
+    return missing;
   };
 
   const postBackendJson = async (path, payload) => {
@@ -433,16 +485,23 @@ function App() {
 
   /* ---- Export / Publish ---- */
   const handleTestConnection = async () => {
+    const missing = getMissingHostingFields();
+    if (missing.length > 0) {
+      setConnectionTestResult(`Fehler: Bitte zuerst ausfüllen: ${missing.join(', ')}`);
+      return;
+    }
+
     setIsTestingConnection(true);
     setConnectionTestResult('');
+    const normalizedForRequest = ensureSiteUrlNormalized();
     try {
       const data = await postBackendJson('/api/deploy/test', {
-        host: ftpServer,
-        user: ftpUser,
+        host: ftpServer.trim(),
+        user: ftpUser.trim(),
         password: ftpPassword,
         port: parseInt(ftpPort, 10) || 21,
         remotePath: ftpRemotePath,
-        siteUrl,
+        siteUrl: normalizedForRequest || siteUrl.trim(),
       });
 
       if (data.success) {
@@ -457,11 +516,18 @@ function App() {
   };
 
   const handleExport = async () => {
+    const missing = getMissingHostingFields();
+    if (missing.length > 0) {
+      setExportResult(`Fehler: Bitte zuerst ausfüllen: ${missing.join(', ')}`);
+      return;
+    }
+
     setIsExporting(true);
     setExportResult('');
     const parsedPort = parseInt(ftpPort, 10) || 21;
+    const normalizedForRequest = ensureSiteUrlNormalized();
 
-    if (parsedPort !== 22 && !siteUrl.trim()) {
+    if (parsedPort !== 22 && !(normalizedForRequest || siteUrl.trim())) {
       setExportResult('Fehler: Bitte Website URL setzen (z.B. https://deine-domain.ch), damit der ZIP-Upload automatisch entpackt werden kann.');
       setIsExporting(false);
       return;
@@ -469,12 +535,12 @@ function App() {
 
     try {
       const data = await postBackendJson('/api/deploy', {
-        host: ftpServer,
-        user: ftpUser,
+        host: ftpServer.trim(),
+        user: ftpUser.trim(),
         password: ftpPassword,
         port: parsedPort,
         remotePath: ftpRemotePath,
-        siteUrl,
+        siteUrl: normalizedForRequest || siteUrl.trim(),
       });
       if (data.success) {
         setExportResult(data.log || 'Website erfolgreich publiziert!');
@@ -836,9 +902,9 @@ function App() {
             </div>
             <div className="input-group" style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Passwort</label>
-              <input type="text" placeholder="Dein FTP Passwort" value={ftpPassword}
+              <input type="password" placeholder="Dein FTP Passwort" value={ftpPassword}
                 onChange={e => setFtpPassword(e.target.value)}
-                style={{ WebkitTextSecurity: 'disc' }} />
+                autoComplete="current-password" />
             </div>
 
             <div className="input-group" style={{ marginBottom: '1.5rem' }}>
@@ -851,9 +917,11 @@ function App() {
 
             <div className="input-group" style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website-Adresse</label>
-              <input type="text" placeholder="https://www.deine-domain.ch" value={siteUrl} onChange={e => setSiteUrl(e.target.value)} />
+              <input type="text" placeholder="z.B. deine-domain.ch" value={siteUrl}
+                onChange={e => setSiteUrl(e.target.value)}
+                onBlur={ensureSiteUrlNormalized} />
               <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
-                Wird beim Veröffentlichen verwendet, um den Upload automatisch zu entpacken.
+                Du kannst nur die Domain eingeben (z.B. deine-domain.ch). Flatsite ergänzt automatisch https:// und www.
               </p>
             </div>
 
@@ -1014,9 +1082,9 @@ function App() {
             </div>
             <div className="input-group" style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Passwort</label>
-              <input type="text" placeholder="Neues FTP Passwort" value={ftpPassword}
+              <input type="password" placeholder="Neues FTP Passwort" value={ftpPassword}
                 onChange={e => setFtpPassword(e.target.value)}
-                style={{ WebkitTextSecurity: 'disc' }} />
+                autoComplete="current-password" />
             </div>
 
             <div className="input-group" style={{ marginBottom: '1.5rem' }}>
@@ -1026,7 +1094,9 @@ function App() {
 
             <div className="input-group" style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website-Adresse</label>
-              <input type="text" placeholder="https://www.deine-domain.ch" value={siteUrl} onChange={e => setSiteUrl(e.target.value)} />
+              <input type="text" placeholder="z.B. deine-domain.ch" value={siteUrl}
+                onChange={e => setSiteUrl(e.target.value)}
+                onBlur={ensureSiteUrlNormalized} />
             </div>
 
             <button className="btn-outline" style={{ width: '100%', padding: '0.9rem', marginBottom: '1rem' }}

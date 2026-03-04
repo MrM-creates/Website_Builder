@@ -6,9 +6,9 @@ columns:
       contentPages:
         type: pages
         headline: Deine Portfolios & Seiten
+        query: site.children.listed.sortBy("num", "asc")
         layout: list
         sortable: true
-        status: listed
         create:
           - default
         empty: Noch keine Inhaltsseiten vorhanden.
