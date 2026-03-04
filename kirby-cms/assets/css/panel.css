@@ -61,3 +61,9 @@
 .k-topbar-signals {
     display: none !important;
 }
+
+/* Hide Kirby's external "Open" action in embedded mode to avoid confusion.
+   Flatsite provides its own "Website ansehen" button. */
+.k-open-view-button {
+    display: none !important;
+}

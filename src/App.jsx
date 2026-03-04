@@ -76,6 +76,34 @@ const normalizeWebsiteUrlInput = (value = '') => {
   }
 };
 
+const normalizeTargetPathInput = (value = '/') => {
+  let targetPath = String(value ?? '').trim();
+  if (!targetPath || targetPath === '.') return '/';
+
+  targetPath = targetPath.replace(/\\/g, '/').replace(/\/+/g, '/');
+  if (!targetPath.startsWith('/')) {
+    targetPath = `/${targetPath}`;
+  }
+
+  if (targetPath.length > 1) {
+    targetPath = targetPath.replace(/\/+$/g, '');
+  }
+
+  return targetPath || '/';
+};
+
+const ensureTrailingSlashForDirectory = (url = '') => {
+  try {
+    const parsed = new URL(url);
+    if (parsed.pathname && parsed.pathname !== '/' && !parsed.pathname.endsWith('/')) {
+      parsed.pathname = `${parsed.pathname}/`;
+    }
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+};
+
 const DEFAULT_PAGES = [
   { id: 'home', title: 'Startseite', required: true, selected: true },
   { id: 'portfolio', title: 'Portfolio', required: false, selected: true },
@@ -85,7 +113,7 @@ const DEFAULT_PAGES = [
 
 const TEST_HOSTING_DEFAULTS = {
   ftpServer: 'sl91.web.hostpoint.ch',
-  ftpUser: '',
+  ftpUser: 'testuser@egakinup.myhostpoint.ch',
   ftpPassword: '',
   ftpPort: '21',
   websiteUrl: 'https://swiss-ai-community.ch',
@@ -227,6 +255,7 @@ function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportResult, setExportResult] = useState('');
   const [isLive, setIsLive] = useState(false);
+  const [lastPublishedViewUrl, setLastPublishedViewUrl] = useState('');
   const [projectSignature, setProjectSignature] = useState('');
   const [lastPublishedSignature, setLastPublishedSignature] = useState(null);
   const [kirbyReady, setKirbyReady] = useState(false);
@@ -331,6 +360,60 @@ function App() {
     setPanelSrc(`/panel/site?from=flatsite&ts=${Date.now()}`);
   };
 
+  const buildWebsiteViewUrl = (urlInput = websiteUrl, targetPathInput = targetPath) => {
+    const base = normalizeWebsiteUrlInput(urlInput);
+    if (!base) return '';
+
+    try {
+      const parsed = new URL(base);
+      const normalizedTargetPath = normalizeTargetPathInput(targetPathInput);
+      const currentPath = parsed.pathname.replace(/\/+$/g, '');
+
+      if (normalizedTargetPath && normalizedTargetPath !== '/') {
+        if (!currentPath || currentPath === '/') {
+          parsed.pathname = normalizedTargetPath;
+        } else if (currentPath !== normalizedTargetPath) {
+          parsed.pathname = `${currentPath}${normalizedTargetPath}`.replace(/\/+/g, '/');
+        } else {
+          parsed.pathname = currentPath;
+        }
+      } else {
+        parsed.pathname = currentPath || '/';
+      }
+
+      parsed.search = '';
+      parsed.hash = '';
+      return ensureTrailingSlashForDirectory(parsed.toString());
+    } catch {
+      return '';
+    }
+  };
+
+  const buildWebsiteViewUrlFromTrigger = (triggerUrl = '') => {
+    if (!triggerUrl) return '';
+    try {
+      const parsed = new URL(triggerUrl);
+      parsed.search = '';
+      parsed.hash = '';
+      parsed.pathname = parsed.pathname.replace(/\/flatsite-unzip\.php$/i, '/');
+      return ensureTrailingSlashForDirectory(parsed.toString());
+    } catch {
+      return '';
+    }
+  };
+
+  const computedWebsiteViewUrl = buildWebsiteViewUrl();
+  const websiteViewUrl =
+    isLive && lastPublishedViewUrl
+      ? lastPublishedViewUrl
+      : computedWebsiteViewUrl;
+  const canOpenWebsite = Boolean(websiteViewUrl);
+
+  const handleOpenWebsite = () => {
+    if (!canOpenWebsite) return;
+    window.open(websiteViewUrl, '_blank', 'noopener,noreferrer');
+  };
+
   const fetchProjectSignature = async () => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/project-signature`);
@@ -370,6 +453,8 @@ function App() {
   const hasPendingPublishChanges =
     lastPublishedSignature === null || currentPublishSignature !== lastPublishedSignature;
   const publishButtonDisabled = isExporting || !hasPendingPublishChanges;
+  const isExportError =
+    exportResult.startsWith('Fehler') || exportResult.startsWith('Verbindung');
 
   /* ---- Hosting Setup (invisible Kirby account) ---- */
   const handleHostingComplete = async () => {
@@ -429,10 +514,14 @@ function App() {
     if (normalizedWebsiteUrl !== websiteUrl) {
       setWebsiteUrl(normalizedWebsiteUrl);
     }
+    let timeout = null;
     try {
+      const controller = new AbortController();
+      timeout = setTimeout(() => controller.abort(), 120000);
       const res = await fetch(`${BACKEND_URL}/api/deploy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           host: ftpServer,
           user: ftpUser,
@@ -445,17 +534,29 @@ function App() {
       });
       const data = await res.json();
       if (data.success) {
-        setExportResult(data.log || 'Website erfolgreich publiziert!');
+        setExportResult('Upload erfolgreich.');
         setIsLive(true);
         if (latestProjectSignature) {
           setProjectSignature(latestProjectSignature);
         }
+        const publishedViewUrl =
+          buildWebsiteViewUrlFromTrigger(data.triggerUrl) ||
+          buildWebsiteViewUrl(normalizedWebsiteUrl, targetPath);
+        setLastPublishedViewUrl(publishedViewUrl);
         setLastPublishedSignature(signatureAtDeploy);
       } else {
-        setExportResult('Fehler: ' + (data.error || 'Unbekannter Fehler'));
+        setExportResult('Fehler: Upload fehlgeschlagen.');
       }
     } catch (err) {
-      setExportResult('Verbindungsfehler: ' + err.message);
+      if (err?.name === 'AbortError') {
+        setExportResult('Fehler: Upload dauert zu lange (Timeout).');
+      } else {
+        setExportResult('Verbindungsfehler: Upload fehlgeschlagen.');
+      }
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
     }
     setIsExporting(false);
   };
@@ -879,6 +980,20 @@ function App() {
                   onClick={() => setStep('provider')}>
                   Providerwechsel
                 </button>
+                <button
+                  className="btn-outline"
+                  style={{
+                    padding: '0.5rem 1rem',
+                    fontSize: '0.8rem',
+                    opacity: canOpenWebsite ? 1 : 0.5,
+                    cursor: canOpenWebsite ? 'pointer' : 'not-allowed'
+                  }}
+                  onClick={handleOpenWebsite}
+                  disabled={!canOpenWebsite}
+                  title={canOpenWebsite ? websiteViewUrl : 'Bitte zuerst Website URL erfassen'}
+                >
+                  Website ansehen
+                </button>
                 <button className="btn-primary" style={{
                   padding: '0.5rem 1.5rem',
                   fontSize: '0.8rem',
@@ -1012,19 +1127,58 @@ function App() {
               <div style={{ padding: '2rem' }}>
                 <div style={{ width: '40px', height: '40px', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: '#4facfe', borderRadius: '50%', margin: '0 auto', animation: 'spin 1s linear infinite' }}></div>
                 <p style={{ marginTop: '1.5rem', fontSize: '1.1rem' }}>Generiere & Deploye...</p>
+                <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1rem' }}>
+                  <button
+                    className="btn-outline"
+                    style={{ padding: '0.7rem 1.2rem', fontSize: '0.85rem' }}
+                    onClick={() => {
+                      setShowExportModal(false);
+                      setIsExporting(false);
+                    }}
+                  >
+                    Abbrechen & Zur Übersicht
+                  </button>
+                </div>
                 <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
               </div>
             ) : exportResult ? (
-              <div className="fade-in" style={{
-                padding: '2rem',
-                background: exportResult.startsWith('Fehler') || exportResult.startsWith('Verbindung') ? 'rgba(255,68,68,0.1)' : 'rgba(140, 198, 63, 0.1)',
-                borderRadius: '8px',
-                border: `1px solid ${exportResult.startsWith('Fehler') || exportResult.startsWith('Verbindung') ? 'rgba(255,68,68,0.3)' : 'rgba(140,198,63,0.3)'}`,
-                color: exportResult.startsWith('Fehler') || exportResult.startsWith('Verbindung') ? '#ff4444' : '#8cc63f'
-              }}>
-                <h3 style={{ margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-                  {exportResult.startsWith('Fehler') || exportResult.startsWith('Verbindung') ? '✗' : '✓'} {exportResult}
-                </h3>
+              <div className="fade-in">
+                <div style={{
+                  padding: '2rem',
+                  background: isExportError ? 'rgba(255,68,68,0.1)' : 'rgba(140, 198, 63, 0.1)',
+                  borderRadius: '8px',
+                  border: `1px solid ${isExportError ? 'rgba(255,68,68,0.3)' : 'rgba(140,198,63,0.3)'}`,
+                  color: isExportError ? '#ff4444' : '#8cc63f'
+                }}>
+                  <h3 style={{ margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                    {isExportError ? '✗' : '✓'} {exportResult}
+                  </h3>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', marginTop: '1rem' }}>
+                  {!isExportError && (
+                    <button
+                      className="btn-primary"
+                      style={{ padding: '0.7rem 1.2rem', fontSize: '0.85rem' }}
+                      onClick={() => {
+                        setShowExportModal(false);
+                        setExportResult('');
+                        setStep('editor');
+                      }}
+                    >
+                      Zur Übersicht
+                    </button>
+                  )}
+                  <button
+                    className="btn-outline"
+                    style={{ padding: '0.7rem 1.2rem', fontSize: '0.85rem' }}
+                    onClick={() => {
+                      setShowExportModal(false);
+                      setExportResult('');
+                    }}
+                  >
+                    Schliessen
+                  </button>
+                </div>
               </div>
             ) : (
               <button className="btn-primary" style={{ padding: '1rem 3rem', fontSize: '1.1rem' }} onClick={handleExport}>
