@@ -1,6 +1,39 @@
 <?php
+
+$configuredUrl = getenv('KIRBY_URL');
+$configuredUrl = $configuredUrl !== false ? trim($configuredUrl) : '';
+
+if ($configuredUrl !== '') {
+    $kirbyUrl = rtrim($configuredUrl, '/');
+} else {
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    $forwardedProto = strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+    $isHttps = (
+        (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ||
+        $forwardedProto === 'https'
+    );
+
+    $localHosts = [
+        '127.0.0.1:8000',
+        'localhost:8000',
+        '127.0.0.1:5173',
+        'localhost:5173'
+    ];
+
+    // Local dev always uses Vite host to keep the embedded panel same-origin.
+    if (in_array($host, $localHosts, true)) {
+        $kirbyUrl = 'http://127.0.0.1:5173';
+    } elseif ($host !== '') {
+        $scheme = $isHttps ? 'https' : 'http';
+        $kirbyUrl = $scheme . '://' . $host;
+    } else {
+        // Safe fallback for CLI contexts without HTTP host.
+        $kirbyUrl = 'http://127.0.0.1:5173';
+    }
+}
+
 return [
-    'url' => 'http://localhost:5173',
+    'url' => $kirbyUrl,
     'debug' => false,
     'panel' => [
         'install' => false,
