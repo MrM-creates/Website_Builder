@@ -80,6 +80,15 @@ const PUBLIC_WEB_ROOT_PATHS = new Set([
   '/html',
   '/site',
 ]);
+const PUBLIC_WEB_ROOT_PREFIXES = new Set([
+  'public_html',
+  'httpdocs',
+  'www',
+  'htdocs',
+  'web',
+  'html',
+  'site',
+]);
 
 const normalizeUrlOrigin = (input) => {
   const raw = String(input || '').trim();
@@ -114,11 +123,21 @@ const buildLiveWebsiteUrl = ({ siteUrl, remotePath }) => {
     return `${origin}/`;
   }
 
-  const encodedPath = normalizedPath
+  const segments = normalizedPath
     .split('/')
     .filter(Boolean)
-    .map(encodeURIComponent)
-    .join('/');
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  if (segments.length > 0 && PUBLIC_WEB_ROOT_PREFIXES.has(segments[0].toLowerCase())) {
+    segments.shift();
+  }
+
+  if (segments.length === 0) {
+    return `${origin}/`;
+  }
+
+  const encodedPath = segments.map(encodeURIComponent).join('/');
 
   return `${origin}/${encodedPath}/`;
 };

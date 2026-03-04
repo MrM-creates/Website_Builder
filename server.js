@@ -28,6 +28,7 @@ const DEFAULT_ADMIN_BCRYPT = '$2y$12$KtDqJZUN.tjtrv9dktoYS.4F6PYxZtEvM0t3rxGzEfj
 const DEFAULT_REMOTE_PATH = '/flatsite-test';
 const DEPLOY_ARCHIVE_BASENAME = 'flatsite-deploy.zip';
 const DEPLOY_UNZIP_SCRIPT_BASENAME = 'flatsite-unzip.php';
+const PUBLIC_ROOT_PREFIXES = new Set(['public_html', 'httpdocs', 'www', 'htdocs', 'web', 'html', 'site']);
 
 const execFileAsync = promisify(execFile);
 
@@ -51,9 +52,36 @@ const normalizeSiteUrl = (input = '') => {
     return parsed.origin;
 };
 
+const remotePathToPublicPath = (targetPath = '/') => {
+    let normalized = String(targetPath || '/').trim();
+    if (!normalized) normalized = '/';
+    normalized = normalized.replace(/\\/g, '/');
+    normalized = normalized.replace(/\/{2,}/g, '/');
+    normalized = normalized.startsWith('/') ? normalized : `/${normalized}`;
+    normalized = normalized.length > 1 ? normalized.replace(/\/$/, '') : normalized;
+    if (normalized.includes('..')) {
+        return '/';
+    }
+
+    const segments = normalized
+        .split('/')
+        .filter(Boolean);
+
+    if (segments.length > 0 && PUBLIC_ROOT_PREFIXES.has(segments[0].toLowerCase())) {
+        segments.shift();
+    }
+
+    if (segments.length === 0) {
+        return '/';
+    }
+
+    return `/${segments.join('/')}`;
+};
+
 const buildPublicFileUrl = (origin, targetPath, filename) => {
     const cleanOrigin = String(origin || '').replace(/\/+$/, '');
-    const encodedPath = String(targetPath || '')
+    const publicPath = remotePathToPublicPath(targetPath);
+    const encodedPath = String(publicPath || '')
         .split('/')
         .filter(Boolean)
         .map((segment) => encodeURIComponent(segment))
