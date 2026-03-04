@@ -246,7 +246,7 @@ function App() {
   useEffect(() => {
     if (step === 'editor') {
       setPanelSrc('/panel/site');
-      startKirbyAndLogin();
+      startKirbyAndLogin({ silentIfReady: true });
     }
   }, [step]);
 
@@ -266,9 +266,12 @@ function App() {
     }
   };
 
-  const startKirbyAndLogin = async () => {
-    setKirbyReady(false);
-    setKirbyStatusMsg('Layout Editor wird gestartet...');
+  const startKirbyAndLogin = async ({ silentIfReady = false } = {}) => {
+    const wasReady = kirbyReady;
+    if (!wasReady) {
+      setKirbyReady(false);
+      setKirbyStatusMsg('Layout Editor wird gestartet...');
+    }
 
     const targets = ['/api/auto-login', '/backend/api/auto-login'];
     const maxAttempts = 3;
@@ -315,6 +318,13 @@ function App() {
       return true;
     }
 
+    if (wasReady && silentIfReady) {
+      // Keep a working editor visible even if background re-auth fails temporarily.
+      setKirbyReady(true);
+      setKirbyStatusMsg('');
+      return true;
+    }
+
     console.log('Kirby Auto-Login Fehler:', lastError?.message || 'unbekannt');
     setKirbyReady(false);
     setKirbyStatusMsg('Kirby Session konnte nicht aufgebaut werden. Bitte auf "Erneut verbinden" klicken.');
@@ -322,13 +332,13 @@ function App() {
   };
 
   const openPanelOverview = async () => {
-    const ok = await startKirbyAndLogin();
+    const ok = await startKirbyAndLogin({ silentIfReady: true });
     if (!ok) return;
     setPanelSrc(`/panel/site?from=flatsite&ts=${Date.now()}`);
   };
 
   const handleOpenPublishModal = async () => {
-    await startKirbyAndLogin();
+    await startKirbyAndLogin({ silentIfReady: true });
     setShowExportModal(true);
   };
 
