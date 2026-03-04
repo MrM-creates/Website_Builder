@@ -7,6 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import crypto from 'crypto';
+import os from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -222,6 +223,396 @@ const nextListedDirName = (contentRoot, slug) => {
     return `${nextNum}_${slug}`;
 };
 
+const sanitizeSlug = (value = '') =>
+    String(value)
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-]/g, '')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+
+const listContentDirectories = (contentRoot) => {
+    if (!fs.existsSync(contentRoot)) return [];
+    return fs.readdirSync(contentRoot).filter((entry) => {
+        if (entry.startsWith('.')) return false;
+        const fullPath = path.join(contentRoot, entry);
+        return fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory();
+    });
+};
+
+const upsertPageContentFile = (contentDir, title) => {
+    const txtFilePath = path.join(contentDir, 'default.txt');
+
+    if (!fs.existsSync(contentDir)) {
+        fs.mkdirSync(contentDir, { recursive: true });
+    }
+
+    if (fs.existsSync(txtFilePath)) {
+        const current = fs.readFileSync(txtFilePath, 'utf-8');
+        let updated = current;
+        if (/^Title:/m.test(updated)) {
+            updated = updated.replace(/^Title:.*$/m, `Title: ${title}`);
+        } else {
+            updated = `Title: ${title}\n\n----\n\n${updated}`;
+        }
+        fs.writeFileSync(txtFilePath, updated, 'utf-8');
+        return;
+    }
+
+    const fileContent = `Title: ${title}\n\n----\n\nLayout: []\n`;
+    fs.writeFileSync(txtFilePath, fileContent, 'utf-8');
+};
+
+const findMatchingDirForSlug = (dirs, slug, used = new Set()) => {
+    const slugPattern = new RegExp(`^(?:\\d+_)?${escapeRegex(slug)}$`);
+    return dirs.find((entry) => used.has(entry) === false && slugPattern.test(entry)) || null;
+};
+
+const syncPagesInContent = (contentRoot, rawPages = []) => {
+    if (!fs.existsSync(contentRoot)) {
+        fs.mkdirSync(contentRoot, { recursive: true });
+    }
+
+    const normalizedPages = [];
+    const seen = new Set();
+
+    for (const raw of rawPages) {
+        const slug = sanitizeSlug(raw?.slug);
+        const title = String(raw?.title || '').trim();
+        if (!slug || slug === 'home') continue;
+        if (!title) continue;
+        if (seen.has(slug)) continue;
+        seen.add(slug);
+        normalizedPages.push({ slug, title });
+    }
+
+    const dirs = listContentDirectories(contentRoot);
+    const usedDirs = new Set();
+    const selected = normalizedPages.map((page, index) => {
+        const sourceDir = findMatchingDirForSlug(dirs, page.slug, usedDirs);
+        if (sourceDir) usedDirs.add(sourceDir);
+        return {
+            ...page,
+            sourceDir,
+            desiredDir: `${index + 1}_${page.slug}`
+        };
+    });
+
+    const renameOps = [];
+
+    for (const page of selected) {
+        if (page.sourceDir && page.sourceDir !== page.desiredDir) {
+            renameOps.push({ from: page.sourceDir, to: page.desiredDir });
+        }
+    }
+
+    const renameFromSet = new Set(renameOps.map((op) => op.from));
+    const blockedNames = new Set(
+        dirs.filter((name) => renameFromSet.has(name) === false)
+    );
+    for (const page of selected) {
+        blockedNames.add(page.desiredDir);
+    }
+
+    const listedDirs = dirs.filter((entry) => /^\d+_/.test(entry));
+    let legacyCounter = 1;
+    for (const entry of listedDirs) {
+        if (usedDirs.has(entry)) continue;
+        if (renameFromSet.has(entry)) continue;
+
+        const baseSlug = sanitizeSlug(entry.replace(/^\d+_/, '')) || 'page';
+        let candidate = `${baseSlug}-legacy`;
+        while (blockedNames.has(candidate)) {
+            legacyCounter += 1;
+            candidate = `${baseSlug}-legacy-${legacyCounter}`;
+        }
+
+        renameOps.push({ from: entry, to: candidate });
+        blockedNames.add(candidate);
+    }
+
+    const stagedRenames = [];
+    renameOps.forEach((op, index) => {
+        const fromPath = path.join(contentRoot, op.from);
+        if (!fs.existsSync(fromPath)) return;
+        const tempName = `__sync_tmp_${Date.now()}_${index}`;
+        const tempPath = path.join(contentRoot, tempName);
+        fs.renameSync(fromPath, tempPath);
+        stagedRenames.push({ tempName, to: op.to });
+    });
+
+    for (const op of stagedRenames) {
+        const fromPath = path.join(contentRoot, op.tempName);
+        const toPath = path.join(contentRoot, op.to);
+        fs.renameSync(fromPath, toPath);
+    }
+
+    for (const page of selected) {
+        const finalDir = path.join(contentRoot, page.desiredDir);
+        if (!fs.existsSync(finalDir)) {
+            fs.mkdirSync(finalDir, { recursive: true });
+        }
+        upsertPageContentFile(finalDir, page.title);
+    }
+
+    return {
+        synced: selected.map((p) => ({ slug: p.slug, title: p.title, dir: p.desiredDir })),
+        total: selected.length
+    };
+};
+
+const normalizeTargetPath = (value = '/') => {
+    let targetPath = String(value ?? '').trim();
+
+    if (!targetPath || targetPath === '.') {
+        return '/';
+    }
+
+    targetPath = targetPath.replace(/\\/g, '/');
+
+    if (!targetPath.startsWith('/')) {
+        targetPath = `/${targetPath}`;
+    }
+
+    targetPath = targetPath.replace(/\/+/g, '/');
+
+    if (targetPath.length > 1) {
+        targetPath = targetPath.replace(/\/+$/g, '');
+    }
+
+    if (targetPath.split('/').includes('..')) {
+        throw new Error('Ungueltiger Zielpfad');
+    }
+
+    return targetPath || '/';
+};
+
+const normalizeWebsiteUrl = (value = '') => {
+    let websiteUrl = String(value ?? '').trim();
+    if (!websiteUrl) return '';
+
+    if (!/^https?:\/\//i.test(websiteUrl)) {
+        websiteUrl = `https://${websiteUrl}`;
+    }
+
+    try {
+        const parsed = new URL(websiteUrl);
+        return parsed.toString().replace(/\/+$/g, '');
+    } catch {
+        return '';
+    }
+};
+
+const shQuote = (value = '') => `'${String(value).replace(/'/g, `'\\''`)}'`;
+
+const execPromise = (cmd, options = {}) =>
+    new Promise((resolve, reject) => {
+        exec(cmd, options, (err, stdout, stderr) => {
+            if (err) {
+                const message = (stderr || err.message || '').trim() || 'Kommando fehlgeschlagen';
+                reject(new Error(message));
+                return;
+            }
+            resolve({ stdout, stderr });
+        });
+    });
+
+const createDeployZip = async (sourceFolder, zipPath) => {
+    const source = shQuote(sourceFolder);
+    const zip = shQuote(zipPath);
+    await execPromise(`cd ${source} && zip -qr ${zip} . -x "site/sessions/*"`);
+};
+
+const buildUnzipScript = (token) => `<?php
+declare(strict_types=1);
+
+$expectedToken = '${token}';
+$token = $_GET['token'] ?? '';
+
+if (!hash_equals($expectedToken, (string)$token)) {
+    http_response_code(403);
+    echo 'forbidden';
+    exit;
+}
+
+$archive = basename((string)($_GET['archive'] ?? 'flatsite-deploy.zip'));
+$zipPath = __DIR__ . DIRECTORY_SEPARATOR . $archive;
+
+if (!is_file($zipPath)) {
+    http_response_code(404);
+    echo 'archive_not_found';
+    exit;
+}
+
+if (!class_exists('ZipArchive')) {
+    http_response_code(500);
+    echo 'zip_extension_missing';
+    exit;
+}
+
+$zip = new ZipArchive();
+$opened = $zip->open($zipPath);
+
+if ($opened !== true) {
+    http_response_code(500);
+    echo 'zip_open_failed:' . $opened;
+    exit;
+}
+
+$ok = $zip->extractTo(__DIR__);
+$zip->close();
+
+if ($ok !== true) {
+    http_response_code(500);
+    echo 'zip_extract_failed';
+    exit;
+}
+
+$cleanup = (string)($_GET['cleanup'] ?? '1');
+if ($cleanup !== '0') {
+    @unlink($zipPath);
+    @unlink(__FILE__);
+}
+
+echo 'ok';
+`;
+
+const normalizePublicPath = (value = '') => {
+    let current = String(value ?? '').trim();
+    if (!current || current === '/' || current === '.') return '';
+
+    current = current.replace(/\\/g, '/').replace(/\/+/g, '/');
+    if (!current.startsWith('/')) {
+        current = `/${current}`;
+    }
+
+    current = current.replace(/\/+$/g, '');
+    return current === '/' ? '' : current;
+};
+
+const collectPublicPathCandidates = (baseUrl, targetPath) => {
+    const candidates = [];
+
+    try {
+        const parsed = new URL(baseUrl);
+        const pathFromWebsiteUrl = normalizePublicPath(parsed.pathname);
+        if (pathFromWebsiteUrl) {
+            candidates.push(pathFromWebsiteUrl);
+        }
+    } catch {
+        // ignore
+    }
+
+    const normalizedTargetPath = normalizePublicPath(targetPath);
+    if (normalizedTargetPath) {
+        candidates.push(normalizedTargetPath);
+
+        // Common FTP roots on shared hosting: try the public variant without webroot folder
+        const withoutWebroot = normalizedTargetPath.replace(/^\/(?:httpdocs|htdocs|public_html)(?=\/|$)/i, '');
+        const publicVariant = normalizePublicPath(withoutWebroot);
+        if (publicVariant) {
+            candidates.push(publicVariant);
+        }
+    }
+
+    // Some providers map the domain directly to the FTP target root
+    candidates.push('');
+
+    return [...new Set(candidates)];
+};
+
+const buildUnzipTriggerUrls = ({ websiteUrl, host, targetPath, token, archive }) => {
+    const bases = [];
+    const normalizedWebsiteUrl = normalizeWebsiteUrl(websiteUrl);
+
+    if (normalizedWebsiteUrl) {
+        bases.push(normalizedWebsiteUrl);
+    }
+
+    const normalizedHost = String(host ?? '').trim();
+    if (normalizedHost) {
+        bases.push(`https://${normalizedHost}`);
+        bases.push(`http://${normalizedHost}`);
+    }
+
+    const uniqueBases = [...new Set(bases)];
+
+    const urls = [];
+
+    for (const base of uniqueBases) {
+        const pathCandidates = collectPublicPathCandidates(base, targetPath);
+
+        for (const candidate of pathCandidates) {
+            const scriptPath = candidate
+                ? `${candidate}/flatsite-unzip.php`
+                : '/flatsite-unzip.php';
+
+            const parsed = new URL(base);
+            parsed.pathname = scriptPath;
+            parsed.searchParams.set('token', token);
+            parsed.searchParams.set('archive', archive);
+            parsed.searchParams.set('cleanup', '1');
+            urls.push(parsed.toString());
+        }
+    }
+
+    return [...new Set(urls)];
+};
+
+const fetchWithTimeout = async (url, timeoutMs = 12000) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, {
+            method: 'GET',
+            signal: controller.signal,
+            redirect: 'follow'
+        });
+    } finally {
+        clearTimeout(timer);
+    }
+};
+
+const triggerRemoteUnzip = async (urls = []) => {
+    const attempts = [];
+
+    for (const url of urls) {
+        try {
+            const response = await fetchWithTimeout(url, 12000);
+            const text = await response.text();
+            const preview = String(text || '').slice(0, 200);
+
+            attempts.push({
+                url,
+                status: response.status,
+                preview
+            });
+
+            if (response.ok) {
+                return {
+                    ok: true,
+                    url,
+                    status: response.status,
+                    preview,
+                    attempts
+                };
+            }
+        } catch (error) {
+            attempts.push({
+                url,
+                status: 0,
+                preview: error.message
+            });
+        }
+    }
+
+    return {
+        ok: false,
+        attempts
+    };
+};
+
 // The intelligent Kirby Proxy
 // Rewrite HEAD to GET to prevent the PHP 8 Built-in Server from crashing (500 Error Framebusting bug)
 // State to keep track of the running PHP server
@@ -264,7 +655,16 @@ app.post('/api/start-kirby', (req, res) => {
 
 // ENDPOINT: DEPLOY VIA FTP
 app.post('/api/deploy', async (req, res) => {
-    const { host, user, password, port = 21 } = req.body;
+    const {
+        host,
+        user,
+        password,
+        port = 21,
+        targetPath = '/',
+        websiteUrl = '',
+        deployMode = 'auto'
+    } = req.body ?? {};
+
     const sourceFolder = path.join(__dirname, 'kirby-cms');
 
     if (!host || !user || !password) {
@@ -276,9 +676,18 @@ app.post('/api/deploy', async (req, res) => {
     }
 
     const parsedPort = parseInt(port, 10);
+    let normalizedTargetPath = '/';
+    let normalizedWebsiteUrl = '';
 
     try {
-        console.log(`Starte Deployment zu ${host} auf Port ${parsedPort}...`);
+        normalizedTargetPath = normalizeTargetPath(targetPath);
+        normalizedWebsiteUrl = normalizeWebsiteUrl(websiteUrl);
+    } catch (error) {
+        return res.status(400).json({ error: error.message || 'Ungueltige Deploy-Parameter' });
+    }
+
+    try {
+        console.log(`Starte Deployment zu ${host} auf Port ${parsedPort} (Zielpfad: ${normalizedTargetPath})...`);
 
         if (parsedPort === 22) {
             // SFTP (SSH Protocol) via ssh2-sftp-client
@@ -292,11 +701,17 @@ app.post('/api/deploy', async (req, res) => {
             });
             console.log("SFTP Verbindung hergestellt! Lade Dateien hoch...");
 
+            await sftp.mkdir(normalizedTargetPath, true);
             // Upload the entire directory
-            await sftp.uploadDir(sourceFolder, '/');
+            await sftp.uploadDir(sourceFolder, normalizedTargetPath);
             console.log("SFTP Upload erfolgreich.");
             await sftp.end();
-            res.json({ success: true, log: `Erfolgreich nach ${host} (via SFTP) hochgeladen!` });
+            res.json({
+                success: true,
+                mode: 'direct',
+                targetPath: normalizedTargetPath,
+                log: `Erfolgreich nach ${host} (via SFTP) hochgeladen. Zielpfad: ${normalizedTargetPath}`
+            });
 
         } else {
             // Standard FTP / FTPES via basic-ftp
@@ -312,11 +727,76 @@ app.post('/api/deploy', async (req, res) => {
                 secureOptions: { rejectUnauthorized: false }
             });
 
-            console.log("FTPES Verbindung hergestellt! Lade Dateien hoch...");
-            await client.uploadFromDir(sourceFolder, "/");
-            console.log("FTP Upload erfolgreich.");
+            const wantsZip = deployMode === 'zip' || (deployMode === 'auto' && Boolean(normalizedWebsiteUrl));
+            const archiveName = 'flatsite-deploy.zip';
+
+            console.log(`FTPES Verbindung hergestellt. Modus: ${wantsZip ? 'ZIP' : 'DIRECT'}`);
+
+            await client.ensureDir(normalizedTargetPath);
+
+            if (wantsZip) {
+                const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flatsite-deploy-'));
+                const zipPath = path.join(tmpDir, archiveName);
+                const token = crypto.randomBytes(24).toString('hex');
+                const unzipScriptPath = path.join(tmpDir, 'flatsite-unzip.php');
+
+                try {
+                    await createDeployZip(sourceFolder, zipPath);
+                    fs.writeFileSync(unzipScriptPath, buildUnzipScript(token), 'utf-8');
+
+                    await client.uploadFrom(zipPath, archiveName);
+                    await client.uploadFrom(unzipScriptPath, 'flatsite-unzip.php');
+
+                    const triggerUrls = buildUnzipTriggerUrls({
+                        websiteUrl: normalizedWebsiteUrl,
+                        host,
+                        targetPath: normalizedTargetPath,
+                        token,
+                        archive: archiveName
+                    });
+
+                    const triggerResult = await triggerRemoteUnzip(triggerUrls);
+
+                    if (triggerResult.ok) {
+                        client.close();
+                        res.json({
+                            success: true,
+                            mode: 'zip',
+                            targetPath: normalizedTargetPath,
+                            triggerUrl: triggerResult.url,
+                            log: `Erfolgreich nach ${host} (via FTPES, ZIP) deployed. ZIP wurde serverseitig entpackt. Zielpfad: ${normalizedTargetPath}. Trigger: ${triggerResult.url}`
+                        });
+                        return;
+                    }
+
+                    console.warn('ZIP Trigger fehlgeschlagen, fallback auf Direkt-Upload...', triggerResult.attempts);
+
+                    await client.ensureDir(normalizedTargetPath);
+                    await client.uploadFromDir(sourceFolder, '.');
+
+                    client.close();
+                    res.json({
+                        success: true,
+                        mode: 'direct-fallback',
+                        targetPath: normalizedTargetPath,
+                        warning: 'ZIP Upload war erfolgreich, automatisches Entpacken aber nicht erreichbar. Fallback Direkt-Upload wurde ausgeführt.',
+                        attempts: triggerResult.attempts,
+                        log: `Erfolgreich nach ${host} (via FTPES) hochgeladen. ZIP-Trigger nicht erreichbar, daher Fallback Direkt-Upload. Zielpfad: ${normalizedTargetPath}`
+                    });
+                    return;
+                } finally {
+                    fs.rmSync(tmpDir, { recursive: true, force: true });
+                }
+            }
+
+            await client.uploadFromDir(sourceFolder, '.');
             client.close();
-            res.json({ success: true, log: `Erfolgreich nach ${host} (via FTPES) hochgeladen!` });
+            res.json({
+                success: true,
+                mode: 'direct',
+                targetPath: normalizedTargetPath,
+                log: `Erfolgreich nach ${host} (via FTPES) hochgeladen. Zielpfad: ${normalizedTargetPath}`
+            });
         }
 
     } catch (err) {
@@ -428,6 +908,20 @@ app.post('/api/create-page', express.json(), (req, res) => {
     }
 });
 
+// ENDPOINT: SYNC SELECTED PAGES FROM ONBOARDING TO KIRBY CONTENT
+app.post('/api/sync-pages', express.json(), (req, res) => {
+    const pages = Array.isArray(req.body?.pages) ? req.body.pages : [];
+    const contentRoot = path.join(__dirname, 'kirby-cms', 'content');
+
+    try {
+        const result = syncPagesInContent(contentRoot, pages);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        console.error('Fehler beim Synchronisieren der Seiten:', err);
+        res.status(500).json({ error: 'Seiten konnten nicht synchronisiert werden' });
+    }
+});
+
 // ENDPOINT: ENSURE KIRBY ACCOUNT EXISTS (Invisible to the user)
 app.post('/api/ensure-account', (req, res) => {
     const { email = DEFAULT_ADMIN_EMAIL, password = DEFAULT_ADMIN_PASSWORD } = req.body ?? {};
@@ -454,7 +948,7 @@ app.post('/api/auto-login', async (req, res) => {
             password: DEFAULT_ADMIN_PASSWORD
         });
 
-        const loginResponse = await fetch('http://localhost:8000/api/auth/login', {
+        const loginResponse = await fetch('http://127.0.0.1:8000/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

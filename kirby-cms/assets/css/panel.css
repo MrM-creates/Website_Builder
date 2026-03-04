@@ -44,7 +44,14 @@
 /* Rounded list items */
 .k-list-item {
     border-radius: var(--rounded) !important;
-    margin-bottom: 0.35rem !important;
+}
+
+/* Disable drag handle in page lists to avoid mixed sorting UX.
+   Sorting remains available via the three-dots menu. */
+.k-site-view .k-item-sort-handle,
+.k-page-view .k-item-sort-handle {
+    display: none !important;
+    pointer-events: none !important;
 }
 
 /* Hide Kirby navigation/menu globally (embedded + external panel) */

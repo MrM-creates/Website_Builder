@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k -n \"backend,frontend,kirby\" -c \"magenta,cyan,blue\" \"node server.js\" \"vite\" \"cd kirby-cms && /opt/homebrew/bin/php -S localhost:8000 kirby/router.php\"",
+    "dev": "concurrently --restart-tries 20 --restart-after 1500 -n \"backend,frontend,kirby\" -c \"magenta,cyan,blue\" \"node server.js\" \"vite --host 127.0.0.1 --strictPort\" \"cd kirby-cms && /opt/homebrew/bin/php -S 127.0.0.1:8000 kirby/router.php\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"

@@ -4,26 +4,28 @@ import react from '@vitejs/plugin-react-swc'
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: '127.0.0.1',
+    strictPort: true,
     proxy: {
       '/panel': {
-        target: 'http://localhost:8000',
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true
       },
       '/api/auto-login': {
-        target: 'http://localhost:3001',
+        target: 'http://127.0.0.1:3001',
         changeOrigin: true,
-        cookieDomainRewrite: 'localhost'
+        cookieDomainRewrite: '127.0.0.1'
       },
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true
       },
       '/media': {
-        target: 'http://localhost:8000',
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true
       },
       '/assets': {
-        target: 'http://localhost:8000',
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true
       }
     }

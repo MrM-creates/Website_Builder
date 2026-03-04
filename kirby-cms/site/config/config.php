@@ -1,6 +1,6 @@
 <?php
 return [
-    'url' => 'http://localhost:5173',
+    'url' => 'http://127.0.0.1:5173',
     'debug' => false,
     'panel' => [
         'install' => false,

@@ -62,6 +62,19 @@ const THEME_COLORS = {
 
 // Helper to get the current color
 const getColor = (design, colorIndex) => THEME_COLORS[design]?.[colorIndex] || THEME_COLORS.minimalist[0];
+const normalizeWebsiteUrlInput = (value = '') => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+
+  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+
+  try {
+    const parsed = new URL(withProtocol);
+    return parsed.toString().replace(/\/+$/g, '');
+  } catch {
+    return raw;
+  }
+};
 
 const DEFAULT_PAGES = [
   { id: 'home', title: 'Startseite', required: true, selected: true },
@@ -169,6 +182,8 @@ function LivePreview({ themeKey, colorIndex, projectName }) {
    ========================================================================== */
 
 function App() {
+  const BACKEND_URL = 'http://127.0.0.1:3001';
+
   /* ---- State ---- */
   const [step, setStep] = useState('welcome');
   const [projectName, setProjectName] = useState('');
@@ -190,6 +205,8 @@ function App() {
   const [ftpUser, setFtpUser] = useState('');
   const [ftpPassword, setFtpPassword] = useState('');
   const [ftpPort, setFtpPort] = useState('21');
+  const [websiteUrl, setWebsiteUrl] = useState('');
+  const [targetPath, setTargetPath] = useState('/');
 
   // Footer
   const [footerLine1, setFooterLine1] = useState('');
@@ -232,24 +249,48 @@ function App() {
 
   /* ---- Kirby Server & Auto-Login ---- */
   const startKirbyAndLogin = async () => {
-    // Login via backend (creates Kirby session file directly on filesystem)
-    // Routed through Vite proxy → same origin → cookie works for iframe
-    try {
-      const res = await fetch('/api/auto-login', {
-        method: 'POST',
-        credentials: 'same-origin'
-      });
-      const data = await res.json();
-      if (data.success) {
-        console.log('Kirby Auto-Login erfolgreich');
-      } else {
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const tryAutoLogin = async () => {
+      try {
+        const res = await fetch('/api/auto-login', {
+          method: 'POST',
+          credentials: 'same-origin'
+        });
+        const data = await res.json();
+        if (data.success) {
+          console.log('Kirby Auto-Login erfolgreich');
+          return true;
+        }
         console.log('Kirby Auto-Login fehlgeschlagen:', data.message);
+        return false;
+      } catch (e) {
+        console.log('Kirby Auto-Login Fehler:', e.message);
+        return false;
       }
-    } catch (e) {
-      console.log('Kirby Auto-Login Fehler:', e.message);
+    };
+
+    let loggedIn = await tryAutoLogin();
+
+    // Recovery path: if Kirby is down, ask backend to (re)start PHP and retry
+    if (!loggedIn) {
+      try {
+        await fetch(`${BACKEND_URL}/api/start-kirby`, { method: 'POST' });
+      } catch (e) {
+        console.log('Kirby Start-Request Fehler:', e.message);
+      }
+
+      await delay(1200);
+      loggedIn = await tryAutoLogin();
     }
+
+    if (!loggedIn) {
+      await delay(800);
+      await tryAutoLogin();
+    }
+
     // Delay to let cookie propagate
-    await new Promise(r => setTimeout(r, 500));
+    await delay(500);
     setKirbyReady(true);
   };
 
@@ -262,28 +303,30 @@ function App() {
     setIsSettingUp(true);
     try {
       // Create Kirby account in the background
-      await fetch('http://localhost:3001/api/ensure-account', {
+      await fetch(`${BACKEND_URL}/api/ensure-account`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: 'admin@flatsite.app', password: 'flatsite2026' }),
       });
       // Sync project name to Kirby site title for Panel overview/header
-      await fetch('http://localhost:3001/api/update-site-title', {
+      await fetch(`${BACKEND_URL}/api/update-site-title`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: projectName }),
       });
-      // Create pages in Kirby filesystem
-      for (const page of pages.filter(p => p.selected && p.id !== 'home')) {
-        await fetch('http://localhost:3001/api/create-page', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ slug: page.id, title: page.title }),
-        });
-      }
+      // Sync pages in Kirby filesystem so panel overview matches onboarding exactly
+      await fetch(`${BACKEND_URL}/api/sync-pages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pages: pages
+            .filter((p) => p.selected && p.id !== 'home')
+            .map((p) => ({ slug: p.id, title: p.title }))
+        }),
+      });
       // Apply theme
       const color = getColor(selectedDesign, selectedColor);
-      await fetch('http://localhost:3001/api/update-theme', {
+      await fetch(`${BACKEND_URL}/api/update-theme`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -306,8 +349,12 @@ function App() {
   const handleExport = async () => {
     setIsExporting(true);
     setExportResult('');
+    const normalizedWebsiteUrl = normalizeWebsiteUrlInput(websiteUrl);
+    if (normalizedWebsiteUrl !== websiteUrl) {
+      setWebsiteUrl(normalizedWebsiteUrl);
+    }
     try {
-      const res = await fetch('http://localhost:3001/api/deploy', {
+      const res = await fetch(`${BACKEND_URL}/api/deploy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -315,6 +362,9 @@ function App() {
           user: ftpUser,
           password: ftpPassword,
           port: parseInt(ftpPort, 10) || 21,
+          websiteUrl: normalizedWebsiteUrl,
+          targetPath,
+          deployMode: 'auto',
         }),
       });
       const data = await res.json();
@@ -666,6 +716,20 @@ function App() {
               <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Server Host / IP</label>
               <input type="text" placeholder="z.B. ftp.hostpoint.ch" value={ftpServer} onChange={e => setFtpServer(e.target.value)} />
             </div>
+            <div className="input-group" style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website URL (optional für schnelles ZIP-Deploy)</label>
+              <input
+                type="text"
+                placeholder="z.B. swiss-ai-community.ch"
+                value={websiteUrl}
+                onChange={e => setWebsiteUrl(e.target.value)}
+                onBlur={e => setWebsiteUrl(normalizeWebsiteUrlInput(e.target.value))}
+              />
+            </div>
+            <div className="input-group" style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Zielpfad auf Server</label>
+              <input type="text" placeholder="/ oder /flatsite-test" value={targetPath} onChange={e => setTargetPath(e.target.value)} />
+            </div>
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
               <div className="input-group" style={{ flex: 1 }}>
                 <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Benutzername</label>
@@ -797,6 +861,20 @@ function App() {
               <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Neuer Server Host / IP</label>
               <input type="text" placeholder="z.B. ftp.neuer-provider.ch" value={ftpServer} onChange={e => setFtpServer(e.target.value)} />
             </div>
+            <div className="input-group" style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website URL</label>
+              <input
+                type="text"
+                placeholder="z.B. swiss-ai-community.ch"
+                value={websiteUrl}
+                onChange={e => setWebsiteUrl(e.target.value)}
+                onBlur={e => setWebsiteUrl(normalizeWebsiteUrlInput(e.target.value))}
+              />
+            </div>
+            <div className="input-group" style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Zielpfad</label>
+              <input type="text" placeholder="/ oder /flatsite-test" value={targetPath} onChange={e => setTargetPath(e.target.value)} />
+            </div>
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
               <div className="input-group" style={{ flex: 1 }}>
                 <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Benutzername</label>
@@ -839,6 +917,8 @@ function App() {
             <h2 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Website Publizieren</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>
               Flatsite verpackt deinen Content und lädt ihn via FTP auf {ftpServer || 'den Server'} hoch.
+              <br />
+              Zielpfad: <strong>{targetPath || '/'}</strong>{websiteUrl ? <> · Website URL: <strong>{websiteUrl}</strong></> : null}
             </p>
 
             {isExporting ? (

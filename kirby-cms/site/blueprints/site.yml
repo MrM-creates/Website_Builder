@@ -9,6 +9,8 @@ columns:
         layout: list
         sortable: true
         status: listed
+        create:
+          - default
         image:
           query: page.images.first
           cover: true
