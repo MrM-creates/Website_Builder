@@ -2,11 +2,13 @@ import express from 'express';
 import cors from 'cors';
 import { Client } from 'basic-ftp';
 import SftpClient from 'ssh2-sftp-client';
-import { exec, spawn } from 'child_process';
+import { exec, execFile, spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import crypto from 'crypto';
+import os from 'os';
+import { promisify } from 'util';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,6 +25,246 @@ const DEFAULT_ADMIN_NAME = 'Flatsite Admin';
 const DEFAULT_ADMIN_LANGUAGE = 'de';
 const DEFAULT_ADMIN_ROLE = 'admin';
 const DEFAULT_ADMIN_BCRYPT = '$2y$12$KtDqJZUN.tjtrv9dktoYS.4F6PYxZtEvM0t3rxGzEfjQGg5ln0lBK';
+const DEFAULT_REMOTE_PATH = '/flatsite-test';
+const DEPLOY_ARCHIVE_BASENAME = 'flatsite-deploy.zip';
+const DEPLOY_UNZIP_SCRIPT_BASENAME = 'flatsite-unzip.php';
+
+const execFileAsync = promisify(execFile);
+
+const normalizeSiteUrl = (input = '') => {
+    const raw = String(input || '').trim();
+    if (!raw) return null;
+
+    const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    let parsed;
+
+    try {
+        parsed = new URL(withProtocol);
+    } catch {
+        throw new Error('Ungueltige Website-URL fuer ZIP-Deploy.');
+    }
+
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        throw new Error('Website-URL muss mit http:// oder https:// erreichbar sein.');
+    }
+
+    return parsed.origin;
+};
+
+const buildPublicFileUrl = (origin, targetPath, filename) => {
+    const cleanOrigin = String(origin || '').replace(/\/+$/, '');
+    const encodedPath = String(targetPath || '')
+        .split('/')
+        .filter(Boolean)
+        .map((segment) => encodeURIComponent(segment))
+        .join('/');
+    const encodedFilename = encodeURIComponent(filename);
+    return `${cleanOrigin}/${encodedPath ? `${encodedPath}/` : ''}${encodedFilename}`;
+};
+
+const buildUnzipScript = ({ archiveName, token }) => `<?php
+header('Content-Type: application/json; charset=utf-8');
+
+$expectedToken = '${token}';
+$providedToken = $_GET['token'] ?? '';
+
+if (!hash_equals($expectedToken, $providedToken)) {
+    http_response_code(403);
+    echo json_encode([
+        'success' => false,
+        'error' => 'invalid token'
+    ]);
+    exit;
+}
+
+$archive = basename($_GET['archive'] ?? '${archiveName}');
+$cleanup = ($_GET['cleanup'] ?? '1') !== '0';
+$zipPath = __DIR__ . DIRECTORY_SEPARATOR . $archive;
+
+if (class_exists('ZipArchive') === false) {
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'error' => 'ZipArchive missing'
+    ]);
+    exit;
+}
+
+if (is_file($zipPath) === false) {
+    http_response_code(404);
+    echo json_encode([
+        'success' => false,
+        'error' => 'archive not found',
+        'archive' => $archive
+    ]);
+    exit;
+}
+
+$zip = new ZipArchive();
+$openResult = $zip->open($zipPath);
+
+if ($openResult !== true) {
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'error' => 'unable to open archive',
+        'code' => $openResult
+    ]);
+    exit;
+}
+
+if ($zip->extractTo(__DIR__) === false) {
+    $zip->close();
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'error' => 'extract failed'
+    ]);
+    exit;
+}
+
+$zip->close();
+
+if ($cleanup) {
+    @unlink($zipPath);
+    @unlink(__FILE__);
+}
+
+echo json_encode([
+    'success' => true,
+    'archive' => $archive,
+    'cleanup' => $cleanup
+]);
+`;
+
+const createDeployArchive = async (sourceFolder) => {
+    const tmpRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'flatsite-deploy-'));
+    const archivePath = path.join(tmpRoot, DEPLOY_ARCHIVE_BASENAME);
+
+    try {
+        await execFileAsync('zip', ['-rq', archivePath, '.'], {
+            cwd: sourceFolder,
+            maxBuffer: 20 * 1024 * 1024
+        });
+    } catch (err) {
+        if (String(err?.code || '').toUpperCase() === 'ENOENT') {
+            throw new Error('Systemkommando "zip" fehlt. Bitte auf dem Rechner installieren.');
+        }
+        throw err;
+    }
+
+    return {
+        archivePath,
+        cleanup: async () => {
+            await fs.promises.rm(tmpRoot, { recursive: true, force: true });
+        }
+    };
+};
+
+const normalizeRemotePath = (input = DEFAULT_REMOTE_PATH) => {
+    let remotePath = String(input || '').trim();
+
+    if (!remotePath) {
+        remotePath = DEFAULT_REMOTE_PATH;
+    }
+
+    remotePath = remotePath.replace(/\\/g, '/');
+    remotePath = remotePath.replace(/\/{2,}/g, '/');
+    remotePath = remotePath.startsWith('/') ? remotePath : `/${remotePath}`;
+    remotePath = remotePath.length > 1 ? remotePath.replace(/\/$/, '') : remotePath;
+
+    if (remotePath.includes('..')) {
+        throw new Error('Ungueltiger Zielpfad: ".." ist nicht erlaubt.');
+    }
+
+    if (remotePath === '/') {
+        throw new Error('Aus Sicherheitsgruenden ist "/" als Zielpfad nicht erlaubt. Bitte einen Unterordner angeben.');
+    }
+
+    return remotePath;
+};
+
+const isFtpsDataSocketTlsError = (error) => {
+    const message = String(error?.message || error || '').toLowerCase();
+    return (
+        message.includes('data socket') ||
+        message.includes('tlsv1 alert decode error') ||
+        message.includes('ssl3_read_bytes')
+    );
+};
+
+const deriveDeployOrigins = ({ deployOrigin, host }) => {
+    const candidates = [];
+    const push = (origin) => {
+        if (!origin) return;
+        if (!candidates.includes(origin)) candidates.push(origin);
+    };
+
+    push(deployOrigin);
+
+    const cleanHost = String(host || '').trim().replace(/^ftps?:\/\//i, '').replace(/:\d+$/, '');
+    if (!cleanHost) return candidates;
+
+    const hostVariants = new Set([cleanHost]);
+    if (cleanHost.startsWith('ftp.')) {
+        hostVariants.add(cleanHost.slice(4));
+    }
+    if (cleanHost.startsWith('ftps.')) {
+        hostVariants.add(cleanHost.slice(5));
+    }
+
+    for (const variant of hostVariants) {
+        push(`https://${variant}`);
+        push(`http://${variant}`);
+    }
+
+    return candidates;
+};
+
+const triggerRemoteUnzip = async ({ origins, targetPath, archiveName, token }) => {
+    const attempts = [];
+
+    for (const origin of origins) {
+        const scriptUrl = buildPublicFileUrl(origin, targetPath, DEPLOY_UNZIP_SCRIPT_BASENAME);
+        const url = new URL(scriptUrl);
+        url.searchParams.set('token', token);
+        url.searchParams.set('archive', archiveName);
+        url.searchParams.set('cleanup', '1');
+
+        try {
+            const response = await fetch(url.toString(), {
+                method: 'GET',
+                redirect: 'follow',
+                signal: AbortSignal.timeout(10000)
+            });
+
+            const bodyText = await response.text();
+            let payload = null;
+            try {
+                payload = bodyText ? JSON.parse(bodyText) : null;
+            } catch {
+                payload = null;
+            }
+
+            if (response.ok && payload?.success === true) {
+                return {
+                    success: true,
+                    triggerUrl: url.toString(),
+                    responseText: bodyText
+                };
+            }
+
+            attempts.push(`${url.toString()} -> HTTP ${response.status}`);
+        } catch (err) {
+            attempts.push(`${url.toString()} -> ${err.message}`);
+        }
+    }
+
+    return {
+        success: false,
+        attempts
+    };
+};
 
 const parseField = (content, key) => {
     const match = content.match(new RegExp(`^${key}:\\s*(.+)$`, 'mi'));
@@ -262,66 +504,254 @@ app.post('/api/start-kirby', (req, res) => {
 });
 
 
-// ENDPOINT: DEPLOY VIA FTP
-app.post('/api/deploy', async (req, res) => {
-    const { host, user, password, port = 21 } = req.body;
-    const sourceFolder = path.join(__dirname, 'kirby-cms');
+const parseDeployRequest = (body = {}) => {
+    const { host, user, password, port = 21, remotePath = DEFAULT_REMOTE_PATH, siteUrl = '' } = body;
+    const parsedPort = parseInt(port, 10) || 21;
+    const targetPath = normalizeRemotePath(remotePath);
+    const deployOrigin = normalizeSiteUrl(siteUrl);
 
     if (!host || !user || !password) {
-        return res.status(400).json({ error: 'Fehlende FTP Credentials' });
+        throw new Error('Fehlende FTP Credentials');
     }
+
+    return {
+        host,
+        user,
+        password,
+        parsedPort,
+        targetPath,
+        deployOrigin
+    };
+};
+
+// ENDPOINT: TEST DEPLOY CONNECTION
+app.post('/api/deploy/test', async (req, res) => {
+    let params;
+
+    try {
+        params = parseDeployRequest(req.body ?? {});
+    } catch (err) {
+        return res.status(400).json({ error: err.message });
+    }
+
+    const { host, user, password, parsedPort, targetPath } = params;
+
+    try {
+        if (parsedPort === 22) {
+            const sftp = new SftpClient();
+            await sftp.connect({
+                host,
+                port: 22,
+                username: user,
+                password,
+                readyTimeout: 10000
+            });
+
+            const startPath = await sftp.cwd().catch(() => '(unbekannt)');
+            const exists = await sftp.exists(targetPath);
+            await sftp.end();
+
+            const targetExists = exists === true || exists === 'd' || exists === 'l';
+            const targetInfo = targetExists
+                ? `Zielpfad-Pruefung: vorhanden (Typ: ${String(exists)}).`
+                : 'Zielpfad-Pruefung: nicht gefunden; wird beim ersten Deploy erstellt.';
+
+            return res.json({
+                success: true,
+                log: `SFTP Verbindung erfolgreich zu ${host}:22. Startpfad (CWD): ${startPath}. Zielpfad: ${targetPath}. ${targetInfo}`
+            });
+        }
+
+        const client = new Client();
+        let dataChannelMode = 'PROT P';
+        await client.access({
+            host,
+            user,
+            password,
+            port: parsedPort,
+            secure: true,
+            secureOptions: { rejectUnauthorized: false }
+        });
+
+        const startPath = await client.pwd();
+
+        // Validate FTPS data channel early (LIST uses the data connection).
+        try {
+            await client.list(startPath || '.');
+        } catch (err) {
+            if (isFtpsDataSocketTlsError(err)) {
+                await client.sendIgnoringError('PBSZ 0');
+                await client.sendIgnoringError('PROT C');
+                dataChannelMode = 'PROT C (Fallback)';
+                await client.list(startPath || '.');
+            } else {
+                throw err;
+            }
+        }
+
+        let targetExists = false;
+        try {
+            await client.cd(targetPath);
+            targetExists = true;
+        } catch {
+            targetExists = false;
+        } finally {
+            try {
+                await client.cd(startPath);
+            } catch {
+                // Ignore directory restore errors in test mode
+            }
+        }
+
+        const targetInfo = targetExists
+            ? 'Zielpfad-Pruefung: vorhanden (CWD erfolgreich).'
+            : 'Zielpfad-Pruefung: nicht gefunden; wird beim ersten Deploy erstellt.';
+
+        client.close();
+
+        return res.json({
+            success: true,
+            log: `FTP/FTPES Verbindung erfolgreich zu ${host}:${parsedPort}. Startpfad (PWD): ${startPath}. Datenkanal: ${dataChannelMode}. Zielpfad: ${targetPath}. ${targetInfo}`
+        });
+    } catch (err) {
+        console.error('Verbindungstest fehlgeschlagen:', err);
+        return res.status(500).json({ error: err.message, log: err.toString() });
+    }
+});
+
+// ENDPOINT: DEPLOY VIA FTP
+app.post('/api/deploy', async (req, res) => {
+    const sourceFolder = path.join(__dirname, 'kirby-cms');
 
     if (!fs.existsSync(sourceFolder)) {
         return res.status(404).json({ error: 'Zu exportierender Kirby Ordner fehlt!' });
     }
 
-    const parsedPort = parseInt(port, 10);
+    let params;
+    try {
+        params = parseDeployRequest(req.body ?? {});
+    } catch (err) {
+        return res.status(400).json({ error: err.message });
+    }
+
+    const { host, user, password, parsedPort, targetPath, deployOrigin } = params;
+
+    if (parsedPort !== 22 && !deployOrigin) {
+        return res.status(400).json({
+            error: 'Bitte Website-URL angeben (z.B. https://deine-domain.ch), damit der ZIP-Upload automatisch entpackt werden kann.'
+        });
+    }
 
     try {
-        console.log(`Starte Deployment zu ${host} auf Port ${parsedPort}...`);
+        console.log(`Starte Deployment zu ${host} auf Port ${parsedPort} in ${targetPath}...`);
 
         if (parsedPort === 22) {
             // SFTP (SSH Protocol) via ssh2-sftp-client
             const sftp = new SftpClient();
             await sftp.connect({
-                host: host,
+                host,
                 port: 22,
                 username: user,
-                password: password,
-                readyTimeout: 10000 // 10 seconds timeout
+                password,
+                readyTimeout: 10000
             });
-            console.log("SFTP Verbindung hergestellt! Lade Dateien hoch...");
 
-            // Upload the entire directory
-            await sftp.uploadDir(sourceFolder, '/');
-            console.log("SFTP Upload erfolgreich.");
+            console.log('SFTP Verbindung hergestellt! Lade Dateien hoch...');
+            await sftp.mkdir(targetPath, true);
+            await sftp.uploadDir(sourceFolder, targetPath);
+            console.log('SFTP Upload erfolgreich.');
             await sftp.end();
-            res.json({ success: true, log: `Erfolgreich nach ${host} (via SFTP) hochgeladen!` });
 
-        } else {
-            // Standard FTP / FTPES via basic-ftp
-            // Hostpoint Erfordert oft explizites FTPES (FTP over explicit TLS) auf Port 21
-            const client = new Client();
-            // client.ftp.verbose = true;
-            await client.access({
-                host: host,
-                user: user,
-                password: password,
-                port: parsedPort || 21,
-                secure: true,
-                secureOptions: { rejectUnauthorized: false }
+            return res.json({
+                success: true,
+                log: `Erfolgreich nach ${host} (via SFTP) hochgeladen. Zielpfad: ${targetPath}`
             });
-
-            console.log("FTPES Verbindung hergestellt! Lade Dateien hoch...");
-            await client.uploadFromDir(sourceFolder, "/");
-            console.log("FTP Upload erfolgreich.");
-            client.close();
-            res.json({ success: true, log: `Erfolgreich nach ${host} (via FTPES) hochgeladen!` });
         }
 
+        // FTP / FTPES: Upload as ZIP + remote unzip.php execution
+        const deployOrigins = deriveDeployOrigins({ deployOrigin, host });
+        const archive = await createDeployArchive(sourceFolder);
+        const deployToken = crypto.randomBytes(24).toString('hex');
+        const unzipScriptPath = path.join(path.dirname(archive.archivePath), DEPLOY_UNZIP_SCRIPT_BASENAME);
+
+        try {
+            await fs.promises.writeFile(
+                unzipScriptPath,
+                buildUnzipScript({
+                    archiveName: DEPLOY_ARCHIVE_BASENAME,
+                    token: deployToken
+                }),
+                'utf-8'
+            );
+
+            const uploadArchiveViaFtpes = async ({ useClearDataChannel = false } = {}) => {
+                const client = new Client();
+                try {
+                    await client.access({
+                        host,
+                        user,
+                        password,
+                        port: parsedPort,
+                        secure: true,
+                        secureOptions: { rejectUnauthorized: false }
+                    });
+
+                    if (useClearDataChannel) {
+                        await client.sendIgnoringError('PBSZ 0');
+                        await client.sendIgnoringError('PROT C');
+                    }
+
+                    await client.ensureDir(targetPath);
+                    await client.uploadFrom(archive.archivePath, path.posix.join(targetPath, DEPLOY_ARCHIVE_BASENAME));
+                    await client.uploadFrom(unzipScriptPath, path.posix.join(targetPath, DEPLOY_UNZIP_SCRIPT_BASENAME));
+                } finally {
+                    client.close();
+                }
+            };
+
+            let dataChannelMode = 'PROT P';
+            try {
+                await uploadArchiveViaFtpes({ useClearDataChannel: false });
+            } catch (err) {
+                if (!isFtpsDataSocketTlsError(err)) {
+                    throw err;
+                }
+
+                console.warn('FTPS Datenkanal TLS-Fehler erkannt, retry mit PROT C...');
+                await uploadArchiveViaFtpes({ useClearDataChannel: true });
+                dataChannelMode = 'PROT C (Fallback)';
+            }
+
+            const unzipResult = await triggerRemoteUnzip({
+                origins: deployOrigins,
+                targetPath,
+                archiveName: DEPLOY_ARCHIVE_BASENAME,
+                token: deployToken
+            });
+
+            if (!unzipResult.success) {
+                const manualBase = deployOrigin || deployOrigins[0];
+                const manualUrl = manualBase
+                    ? `${buildPublicFileUrl(manualBase, targetPath, DEPLOY_UNZIP_SCRIPT_BASENAME)}?token=${encodeURIComponent(deployToken)}&archive=${encodeURIComponent(DEPLOY_ARCHIVE_BASENAME)}&cleanup=1`
+                    : '';
+                const attemptSummary = unzipResult.attempts?.slice(0, 3).join(' | ') || 'keine HTTP-URL pruefbar';
+
+                throw new Error(
+                    `ZIP wurde hochgeladen, aber das automatische Entpacken war nicht erreichbar (${attemptSummary}). `
+                    + (manualUrl ? `Bitte im Browser oeffnen: ${manualUrl}` : 'Bitte Website-URL im Hosting eintragen und erneut publizieren.')
+                );
+            }
+
+            return res.json({
+                success: true,
+                log: `Erfolgreich nach ${host} (via FTPES, ${dataChannelMode}) deployed. ZIP wurde serverseitig entpackt. Zielpfad: ${targetPath}. Trigger: ${unzipResult.triggerUrl}`
+            });
+        } finally {
+            await archive.cleanup().catch(() => {});
+        }
     } catch (err) {
-        console.error("Deployment Fehler:", err);
-        res.status(500).json({ error: err.message, log: err.toString() });
+        console.error('Deployment Fehler:', err);
+        return res.status(500).json({ error: err.message, log: err.toString() });
     }
 });
 
@@ -454,7 +884,7 @@ app.post('/api/auto-login', async (req, res) => {
             password: DEFAULT_ADMIN_PASSWORD
         });
 
-        const loginResponse = await fetch('http://localhost:8000/api/auth/login', {
+        const loginResponse = await fetch('http://127.0.0.1:8000/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

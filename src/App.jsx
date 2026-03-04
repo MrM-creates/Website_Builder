@@ -190,6 +190,10 @@ function App() {
   const [ftpUser, setFtpUser] = useState('');
   const [ftpPassword, setFtpPassword] = useState('');
   const [ftpPort, setFtpPort] = useState('21');
+  const [ftpRemotePath, setFtpRemotePath] = useState('/flatsite-test');
+  const [siteUrl, setSiteUrl] = useState('');
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [connectionTestResult, setConnectionTestResult] = useState('');
 
   // Footer
   const [footerLine1, setFooterLine1] = useState('');
@@ -202,6 +206,7 @@ function App() {
   const [exportResult, setExportResult] = useState('');
   const [isLive, setIsLive] = useState(false);
   const [kirbyReady, setKirbyReady] = useState(false);
+  const [kirbyStatusMsg, setKirbyStatusMsg] = useState('');
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [setupDone, setSetupDone] = useState(false);
   const [panelSrc, setPanelSrc] = useState('/panel/site');
@@ -217,44 +222,97 @@ function App() {
     }
   }, [editingPageId]);
 
-  // Start Kirby server when entering editor
-  useEffect(() => {
-    if (step === 'editor' && !kirbyReady) {
-      startKirbyAndLogin();
-    }
-  }, [step]);
-
+  // Start/refresh Kirby session when entering editor
   useEffect(() => {
     if (step === 'editor') {
       setPanelSrc('/panel/site');
+      startKirbyAndLogin();
     }
   }, [step]);
 
   /* ---- Kirby Server & Auto-Login ---- */
   const startKirbyAndLogin = async () => {
-    // Login via backend (creates Kirby session file directly on filesystem)
-    // Routed through Vite proxy → same origin → cookie works for iframe
+    setKirbyReady(false);
+    setKirbyStatusMsg('Layout Editor wird gestartet...');
+
     try {
       const res = await fetch('/api/auto-login', {
         method: 'POST',
         credentials: 'same-origin'
       });
-      const data = await res.json();
-      if (data.success) {
-        console.log('Kirby Auto-Login erfolgreich');
-      } else {
-        console.log('Kirby Auto-Login fehlgeschlagen:', data.message);
+
+      let data = {};
+      try {
+        data = await res.json();
+      } catch {
+        data = {};
       }
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || `HTTP ${res.status}`);
+      }
+
+      // Small delay to let cookie propagate to iframe request
+      await new Promise(r => setTimeout(r, 300));
+      setKirbyReady(true);
+      setKirbyStatusMsg('');
+      return true;
     } catch (e) {
       console.log('Kirby Auto-Login Fehler:', e.message);
+      setKirbyReady(false);
+      setKirbyStatusMsg('Kirby Session konnte nicht aufgebaut werden. Bitte erneut versuchen.');
+      return false;
     }
-    // Delay to let cookie propagate
-    await new Promise(r => setTimeout(r, 500));
-    setKirbyReady(true);
   };
 
-  const openPanelOverview = () => {
+  const openPanelOverview = async () => {
+    const ok = await startKirbyAndLogin();
+    if (!ok) return;
     setPanelSrc(`/panel/site?from=flatsite&ts=${Date.now()}`);
+  };
+
+  const handleOpenPublishModal = async () => {
+    await startKirbyAndLogin();
+    setShowExportModal(true);
+  };
+
+  const postBackendJson = async (path, payload) => {
+    const targets = [`/backend${path}`, `http://127.0.0.1:3001${path}`];
+    let lastError = null;
+
+    for (const url of targets) {
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        const raw = await res.text();
+        let data = {};
+
+        try {
+          data = raw ? JSON.parse(raw) : {};
+        } catch {
+          lastError = new Error(`Unerwartete Server-Antwort (HTTP ${res.status}). Bitte Dev-Server neu starten.`);
+          continue;
+        }
+
+        if (!res.ok) {
+          return {
+            success: false,
+            error: data.error || `HTTP ${res.status}`,
+            log: data.log
+          };
+        }
+
+        return data;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error('Backend nicht erreichbar.');
   };
 
   /* ---- Hosting Setup (invisible Kirby account) ---- */
@@ -262,20 +320,20 @@ function App() {
     setIsSettingUp(true);
     try {
       // Create Kirby account in the background
-      await fetch('http://localhost:3001/api/ensure-account', {
+      await fetch('/backend/api/ensure-account', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: 'admin@flatsite.app', password: 'flatsite2026' }),
       });
       // Sync project name to Kirby site title for Panel overview/header
-      await fetch('http://localhost:3001/api/update-site-title', {
+      await fetch('/backend/api/update-site-title', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: projectName }),
       });
       // Create pages in Kirby filesystem
       for (const page of pages.filter(p => p.selected && p.id !== 'home')) {
-        await fetch('http://localhost:3001/api/create-page', {
+        await fetch('/backend/api/create-page', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ slug: page.id, title: page.title }),
@@ -283,7 +341,7 @@ function App() {
       }
       // Apply theme
       const color = getColor(selectedDesign, selectedColor);
-      await fetch('http://localhost:3001/api/update-theme', {
+      await fetch('/backend/api/update-theme', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -303,21 +361,50 @@ function App() {
   };
 
   /* ---- Export / Publish ---- */
+  const handleTestConnection = async () => {
+    setIsTestingConnection(true);
+    setConnectionTestResult('');
+    try {
+      const data = await postBackendJson('/api/deploy/test', {
+        host: ftpServer,
+        user: ftpUser,
+        password: ftpPassword,
+        port: parseInt(ftpPort, 10) || 21,
+        remotePath: ftpRemotePath,
+        siteUrl,
+      });
+
+      if (data.success) {
+        setConnectionTestResult(`OK: ${data.log || 'Verbindung erfolgreich.'}`);
+      } else {
+        setConnectionTestResult(`Fehler: ${data.error || 'Verbindungstest fehlgeschlagen.'}`);
+      }
+    } catch (err) {
+      setConnectionTestResult(`Verbindungsfehler: ${err.message}`);
+    }
+    setIsTestingConnection(false);
+  };
+
   const handleExport = async () => {
     setIsExporting(true);
     setExportResult('');
+    const parsedPort = parseInt(ftpPort, 10) || 21;
+
+    if (parsedPort !== 22 && !siteUrl.trim()) {
+      setExportResult('Fehler: Bitte Website URL setzen (z.B. https://deine-domain.ch), damit der ZIP-Upload automatisch entpackt werden kann.');
+      setIsExporting(false);
+      return;
+    }
+
     try {
-      const res = await fetch('http://localhost:3001/api/deploy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          host: ftpServer,
-          user: ftpUser,
-          password: ftpPassword,
-          port: parseInt(ftpPort, 10) || 21,
-        }),
+      const data = await postBackendJson('/api/deploy', {
+        host: ftpServer,
+        user: ftpUser,
+        password: ftpPassword,
+        port: parsedPort,
+        remotePath: ftpRemotePath,
+        siteUrl,
       });
-      const data = await res.json();
       if (data.success) {
         setExportResult(data.log || 'Website erfolgreich publiziert!');
         setIsLive(true);
@@ -683,6 +770,42 @@ function App() {
                 style={{ WebkitTextSecurity: 'disc' }} />
             </div>
 
+            <div className="input-group" style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Zielpfad auf Server</label>
+              <input type="text" placeholder="/flatsite-test" value={ftpRemotePath} onChange={e => setFtpRemotePath(e.target.value)} />
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
+                Sicherheitsmodus: Kein Upload auf "/" erlaubt. Nutze einen Unterordner wie `/flatsite-test`.
+              </p>
+            </div>
+
+            <div className="input-group" style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website URL (für Auto-Entpacken)</label>
+              <input type="text" placeholder="https://www.deine-domain.ch" value={siteUrl} onChange={e => setSiteUrl(e.target.value)} />
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
+                Wird nur beim Publizieren für den ZIP-Entpack-Schritt verwendet.
+              </p>
+            </div>
+
+            <button className="btn-outline" style={{ width: '100%', padding: '0.9rem', marginBottom: '0.8rem' }}
+              onClick={handleTestConnection} disabled={isTestingConnection}>
+              {isTestingConnection ? 'Verbindung wird getestet...' : 'Verbindung testen'}
+            </button>
+
+            {connectionTestResult && (
+              <div style={{
+                marginBottom: '0.8rem',
+                padding: '0.8rem 1rem',
+                borderRadius: '8px',
+                background: connectionTestResult.startsWith('OK:') ? 'rgba(140,198,63,0.1)' : 'rgba(255,68,68,0.1)',
+                border: `1px solid ${connectionTestResult.startsWith('OK:') ? 'rgba(140,198,63,0.3)' : 'rgba(255,68,68,0.3)'}`,
+                color: connectionTestResult.startsWith('OK:') ? '#8cc63f' : '#ff4444',
+                fontSize: '0.85rem',
+                lineHeight: 1.4
+              }}>
+                {connectionTestResult}
+              </div>
+            )}
+
             <button className="btn-primary" style={{ width: '100%', padding: '1rem', marginTop: '0.5rem' }}
               onClick={handleHostingComplete} disabled={isSettingUp}>
               {isSettingUp ? 'Setup läuft...' : 'Setup abschliessen & zum Editor'}
@@ -736,7 +859,7 @@ function App() {
                   Providerwechsel
                 </button>
                 <button className="btn-primary" style={{ padding: '0.5rem 1.5rem', fontSize: '0.8rem' }}
-                  onClick={() => setShowExportModal(true)}>
+                  onClick={handleOpenPublishModal}>
                   Publizieren
                 </button>
               </div>
@@ -777,7 +900,13 @@ function App() {
             ) : (
               <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem' }}>
                 <div style={{ width: '40px', height: '40px', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: '#4facfe', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-                <p style={{ color: 'var(--text-secondary)' }}>Layout Editor wird gestartet...</p>
+                <p style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>
+                  {kirbyStatusMsg || 'Layout Editor wird gestartet...'}
+                </p>
+                <button className="btn-outline" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}
+                  onClick={startKirbyAndLogin}>
+                  Erneut verbinden
+                </button>
                 <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
               </div>
             )}
@@ -814,6 +943,21 @@ function App() {
                 style={{ WebkitTextSecurity: 'disc' }} />
             </div>
 
+            <div className="input-group" style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Zielpfad auf Server</label>
+              <input type="text" placeholder="/flatsite-test" value={ftpRemotePath} onChange={e => setFtpRemotePath(e.target.value)} />
+            </div>
+
+            <div className="input-group" style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website URL (für Auto-Entpacken)</label>
+              <input type="text" placeholder="https://www.deine-domain.ch" value={siteUrl} onChange={e => setSiteUrl(e.target.value)} />
+            </div>
+
+            <button className="btn-outline" style={{ width: '100%', padding: '0.9rem', marginBottom: '1rem' }}
+              onClick={handleTestConnection} disabled={isTestingConnection}>
+              {isTestingConnection ? 'Verbindung wird getestet...' : 'Verbindung testen'}
+            </button>
+
             <div style={{ display: 'flex', gap: '1rem' }}>
               <button className="btn-outline" style={{ flex: 1, padding: '1rem' }}
                 onClick={() => setStep('editor')}>
@@ -838,7 +982,11 @@ function App() {
             <button onClick={() => { setShowExportModal(false); setExportResult(''); }} style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.5rem', fontSize: '1.2rem' }}>✖</button>
             <h2 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Website Publizieren</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>
-              Flatsite verpackt deinen Content und lädt ihn via FTP auf {ftpServer || 'den Server'} hoch.
+              Flatsite verpackt deinen Content als ZIP, lädt ihn via FTP auf {ftpServer || 'den Server'} hoch und entpackt ihn dort automatisch.
+              <br />
+              Zielpfad: <strong>{ftpRemotePath || '/flatsite-test'}</strong>
+              <br />
+              Website URL: <strong>{siteUrl || '(nicht gesetzt)'}</strong>
             </p>
 
             {isExporting ? (
@@ -860,9 +1008,15 @@ function App() {
                 </h3>
               </div>
             ) : (
-              <button className="btn-primary" style={{ padding: '1rem 3rem', fontSize: '1.1rem' }} onClick={handleExport}>
-                Deployment Starten
-              </button>
+              <div style={{ display: 'flex', gap: '0.8rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button className="btn-outline" style={{ padding: '1rem 1.5rem', fontSize: '1rem' }}
+                  onClick={handleTestConnection} disabled={isTestingConnection}>
+                  {isTestingConnection ? 'Teste Verbindung...' : 'Verbindung testen'}
+                </button>
+                <button className="btn-primary" style={{ padding: '1rem 2rem', fontSize: '1.1rem' }} onClick={handleExport}>
+                  Deployment Starten
+                </button>
+              </div>
             )}
           </div>
         </div>
