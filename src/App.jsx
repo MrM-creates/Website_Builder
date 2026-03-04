@@ -83,6 +83,15 @@ const DEFAULT_PAGES = [
   { id: 'contact', title: 'Kontakt', required: false, selected: true },
 ];
 
+const TEST_HOSTING_DEFAULTS = {
+  ftpServer: 'sl91.web.hostpoint.ch',
+  ftpUser: '',
+  ftpPassword: '',
+  ftpPort: '21',
+  websiteUrl: 'https://swiss-ai-community.ch',
+  targetPath: '/flatsite-test',
+};
+
 /* ==========================================================================
    FLATSITE – Mini Website Preview Component
    ========================================================================== */
@@ -201,12 +210,12 @@ function App() {
   const [selectedColor, setSelectedColor] = useState(0);
 
   // Hosting
-  const [ftpServer, setFtpServer] = useState('');
-  const [ftpUser, setFtpUser] = useState('');
-  const [ftpPassword, setFtpPassword] = useState('');
-  const [ftpPort, setFtpPort] = useState('21');
-  const [websiteUrl, setWebsiteUrl] = useState('');
-  const [targetPath, setTargetPath] = useState('/');
+  const [ftpServer, setFtpServer] = useState(TEST_HOSTING_DEFAULTS.ftpServer);
+  const [ftpUser, setFtpUser] = useState(TEST_HOSTING_DEFAULTS.ftpUser);
+  const [ftpPassword, setFtpPassword] = useState(TEST_HOSTING_DEFAULTS.ftpPassword);
+  const [ftpPort, setFtpPort] = useState(TEST_HOSTING_DEFAULTS.ftpPort);
+  const [websiteUrl, setWebsiteUrl] = useState(TEST_HOSTING_DEFAULTS.websiteUrl);
+  const [targetPath, setTargetPath] = useState(TEST_HOSTING_DEFAULTS.targetPath);
 
   // Footer
   const [footerLine1, setFooterLine1] = useState('');
@@ -218,6 +227,8 @@ function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [exportResult, setExportResult] = useState('');
   const [isLive, setIsLive] = useState(false);
+  const [projectSignature, setProjectSignature] = useState('');
+  const [lastPublishedSignature, setLastPublishedSignature] = useState(null);
   const [kirbyReady, setKirbyReady] = useState(false);
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [setupDone, setSetupDone] = useState(false);
@@ -245,6 +256,28 @@ function App() {
     if (step === 'editor') {
       setPanelSrc('/panel/site');
     }
+  }, [step]);
+
+  useEffect(() => {
+    fetchProjectSignature();
+  }, []);
+
+  useEffect(() => {
+    if (step !== 'editor') return;
+
+    let stopped = false;
+    const run = async () => {
+      if (stopped) return;
+      await fetchProjectSignature();
+    };
+
+    run();
+    const intervalId = setInterval(run, 4000);
+
+    return () => {
+      stopped = true;
+      clearInterval(intervalId);
+    };
   }, [step]);
 
   /* ---- Kirby Server & Auto-Login ---- */
@@ -298,6 +331,46 @@ function App() {
     setPanelSrc(`/panel/site?from=flatsite&ts=${Date.now()}`);
   };
 
+  const fetchProjectSignature = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/project-signature`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data?.success || !data?.signature) return null;
+
+      setProjectSignature((prev) => (prev === data.signature ? prev : data.signature));
+      return data.signature;
+    } catch {
+      return null;
+    }
+  };
+
+  const buildPublishSignature = (urlValue = websiteUrl, signatureValue = projectSignature) =>
+    JSON.stringify({
+      projectName: projectName.trim(),
+      pages: pages.map((p) => ({ id: p.id, title: p.title, required: p.required, selected: p.selected })),
+      design: { selectedDesign, selectedColor },
+      contentSignature: signatureValue || '',
+      footer: {
+        footerLine1: footerLine1.trim(),
+        footerLine2: footerLine2.trim(),
+        footerLine3: footerLine3.trim(),
+      },
+      hosting: {
+        ftpServer: ftpServer.trim(),
+        ftpUser: ftpUser.trim(),
+        ftpPassword,
+        ftpPort: String(ftpPort || '').trim(),
+        websiteUrl: normalizeWebsiteUrlInput(urlValue),
+        targetPath: String(targetPath || '').trim(),
+      },
+    });
+
+  const currentPublishSignature = buildPublishSignature(websiteUrl);
+  const hasPendingPublishChanges =
+    lastPublishedSignature === null || currentPublishSignature !== lastPublishedSignature;
+  const publishButtonDisabled = isExporting || !hasPendingPublishChanges;
+
   /* ---- Hosting Setup (invisible Kirby account) ---- */
   const handleHostingComplete = async () => {
     setIsSettingUp(true);
@@ -350,6 +423,9 @@ function App() {
     setIsExporting(true);
     setExportResult('');
     const normalizedWebsiteUrl = normalizeWebsiteUrlInput(websiteUrl);
+    const latestProjectSignature = await fetchProjectSignature();
+    const effectiveSignature = latestProjectSignature ?? projectSignature;
+    const signatureAtDeploy = buildPublishSignature(normalizedWebsiteUrl, effectiveSignature);
     if (normalizedWebsiteUrl !== websiteUrl) {
       setWebsiteUrl(normalizedWebsiteUrl);
     }
@@ -371,6 +447,10 @@ function App() {
       if (data.success) {
         setExportResult(data.log || 'Website erfolgreich publiziert!');
         setIsLive(true);
+        if (latestProjectSignature) {
+          setProjectSignature(latestProjectSignature);
+        }
+        setLastPublishedSignature(signatureAtDeploy);
       } else {
         setExportResult('Fehler: ' + (data.error || 'Unbekannter Fehler'));
       }
@@ -799,9 +879,16 @@ function App() {
                   onClick={() => setStep('provider')}>
                   Providerwechsel
                 </button>
-                <button className="btn-primary" style={{ padding: '0.5rem 1.5rem', fontSize: '0.8rem' }}
-                  onClick={() => setShowExportModal(true)}>
-                  Publizieren
+                <button className="btn-primary" style={{
+                  padding: '0.5rem 1.5rem',
+                  fontSize: '0.8rem',
+                  opacity: publishButtonDisabled ? 0.45 : 1,
+                  cursor: publishButtonDisabled ? 'not-allowed' : 'pointer',
+                  filter: publishButtonDisabled ? 'grayscale(0.25)' : 'none'
+                }}
+                  onClick={() => setShowExportModal(true)}
+                  disabled={publishButtonDisabled}>
+                  {hasPendingPublishChanges ? 'Publizieren' : 'Publiziert'}
                 </button>
               </div>
             </div>

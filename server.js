@@ -613,6 +613,48 @@ const triggerRemoteUnzip = async (urls = []) => {
     };
 };
 
+const hashPathTree = (rootDir, currentDir, hash) => {
+    const entries = fs
+        .readdirSync(currentDir, { withFileTypes: true })
+        .filter((entry) => !entry.name.startsWith('.'))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+    for (const entry of entries) {
+        const absolute = path.join(currentDir, entry.name);
+        const relative = path.relative(rootDir, absolute).replace(/\\/g, '/');
+        const stats = fs.statSync(absolute);
+        const mtime = Math.floor(stats.mtimeMs);
+
+        if (entry.isDirectory()) {
+            hash.update(`D:${relative}:${mtime};`);
+            hashPathTree(rootDir, absolute, hash);
+        } else if (entry.isFile()) {
+            hash.update(`F:${relative}:${stats.size}:${mtime};`);
+        }
+    }
+};
+
+const computeProjectSignature = () => {
+    const hash = crypto.createHash('sha256');
+    const contentRoot = path.join(__dirname, 'kirby-cms', 'content');
+    const customCssPath = path.join(__dirname, 'kirby-cms', 'assets', 'css', 'custom.css');
+
+    if (fs.existsSync(contentRoot)) {
+        hashPathTree(contentRoot, contentRoot, hash);
+    } else {
+        hash.update('missing:content;');
+    }
+
+    if (fs.existsSync(customCssPath)) {
+        const stats = fs.statSync(customCssPath);
+        hash.update(`F:assets/css/custom.css:${stats.size}:${Math.floor(stats.mtimeMs)};`);
+    } else {
+        hash.update('missing:assets/css/custom.css;');
+    }
+
+    return hash.digest('hex');
+};
+
 // The intelligent Kirby Proxy
 // Rewrite HEAD to GET to prevent the PHP 8 Built-in Server from crashing (500 Error Framebusting bug)
 // State to keep track of the running PHP server
@@ -650,6 +692,17 @@ app.post('/api/start-kirby', (req, res) => {
     setTimeout(() => {
         res.json({ success: true, message: 'Kirby Server erfolgreich auf Port 8000 gestartet.' });
     }, 1000);
+});
+
+// ENDPOINT: PROJECT SIGNATURE (detect editor-side content changes for publish state)
+app.get('/api/project-signature', (req, res) => {
+    try {
+        const signature = computeProjectSignature();
+        res.json({ success: true, signature });
+    } catch (err) {
+        console.error('Fehler beim Berechnen der Projekt-Signatur:', err);
+        res.status(500).json({ success: false, error: 'Projekt-Signatur konnte nicht berechnet werden' });
+    }
 });
 
 
