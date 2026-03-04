@@ -4,7 +4,16 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k -n \"backend,frontend,kirby\" -c \"magenta,cyan,blue\" \"node server.js\" \"vite\" \"cd kirby-cms && /opt/homebrew/bin/php -S localhost:8000 kirby/router.php\"",
+    "dev": "concurrently -k -n \"backend,frontend,kirby\" -c \"magenta,cyan,blue\" \"npm:dev:backend\" \"npm:dev:frontend\" \"npm:dev:kirby\"",
+    "dev:backend": "node server.js",
+    "dev:frontend": "vite --host 127.0.0.1 --port 5173 --strictPort",
+    "dev:kirby": "cd kirby-cms && /opt/homebrew/bin/php -S 127.0.0.1:8000 kirby/router.php",
+    "dev:bg:start": "zsh ./scripts/dev-services.sh start",
+    "dev:bg:stop": "zsh ./scripts/dev-services.sh stop",
+    "dev:bg:restart": "zsh ./scripts/dev-services.sh restart",
+    "dev:bg:doctor": "zsh ./scripts/dev-services.sh doctor",
+    "dev:bg:status": "zsh ./scripts/dev-services.sh status",
+    "dev:bg:logs": "zsh ./scripts/dev-services.sh logs",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"

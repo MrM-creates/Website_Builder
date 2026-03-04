@@ -1,16 +1,36 @@
-# React + Vite
+# Flatsite Local Development
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Start in foreground (for active development)
 
-Currently, two official plugins are available:
+```bash
+npm run dev
+```
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+This starts:
+- Frontend (Vite) on `http://127.0.0.1:5173`
+- Backend (Node) on `http://127.0.0.1:3001`
+- Kirby (PHP) on `http://127.0.0.1:8000`
 
-## React Compiler
+If you close that terminal, all services stop.
 
-The React Compiler is currently not compatible with SWC. See [this issue](https://github.com/vitejs/vite-plugin-react/issues/428) for tracking the progress.
+## Start in background with auto-restart
 
-## Expanding the ESLint configuration
+```bash
+npm run dev:bg:start
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Useful commands:
+
+```bash
+npm run dev:bg:status
+npm run dev:bg:logs
+npm run dev:bg:stop
+npm run dev:bg:restart
+npm run dev:bg:doctor
+```
+
+`dev:bg:doctor` is the recovery command. It removes stale PID state, clears conflicting listeners on ports `3001`, `5173`, `8000`, and starts a clean service set.
+
+Background runtime data:
+- PIDs: `.runtime/pids`
+- Logs: `.runtime/logs`
