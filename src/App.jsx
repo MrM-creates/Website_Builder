@@ -70,6 +70,59 @@ const DEFAULT_PAGES = [
   { id: 'contact', title: 'Kontakt', required: false, selected: true },
 ];
 
+const PUBLIC_WEB_ROOT_PATHS = new Set([
+  '/',
+  '/public_html',
+  '/httpdocs',
+  '/www',
+  '/htdocs',
+  '/web',
+  '/html',
+  '/site',
+]);
+
+const normalizeUrlOrigin = (input) => {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+
+  const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  try {
+    const parsed = new URL(withScheme);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+    return parsed.origin;
+  } catch {
+    return '';
+  }
+};
+
+const normalizeRemotePathForUrl = (input) => {
+  let remotePath = String(input || '').trim();
+  if (!remotePath) return '/';
+  remotePath = remotePath.replace(/\\/g, '/');
+  remotePath = remotePath.replace(/\/{2,}/g, '/');
+  remotePath = remotePath.startsWith('/') ? remotePath : `/${remotePath}`;
+  remotePath = remotePath.length > 1 ? remotePath.replace(/\/$/, '') : remotePath;
+  return remotePath;
+};
+
+const buildLiveWebsiteUrl = ({ siteUrl, remotePath }) => {
+  const origin = normalizeUrlOrigin(siteUrl);
+  if (!origin) return '';
+
+  const normalizedPath = normalizeRemotePathForUrl(remotePath);
+  if (PUBLIC_WEB_ROOT_PATHS.has(normalizedPath.toLowerCase())) {
+    return `${origin}/`;
+  }
+
+  const encodedPath = normalizedPath
+    .split('/')
+    .filter(Boolean)
+    .map(encodeURIComponent)
+    .join('/');
+
+  return `${origin}/${encodedPath}/`;
+};
+
 /* ==========================================================================
    FLATSITE – Mini Website Preview Component
    ========================================================================== */
@@ -230,39 +283,75 @@ function App() {
     }
   }, [step]);
 
+  const liveWebsiteUrl = buildLiveWebsiteUrl({ siteUrl, remotePath: ftpRemotePath });
+
   /* ---- Kirby Server & Auto-Login ---- */
+  const hasActivePanelSession = async () => {
+    try {
+      const res = await fetch('/panel/site', {
+        method: 'GET',
+        credentials: 'same-origin',
+        redirect: 'manual',
+      });
+      return res.status === 200;
+    } catch {
+      return false;
+    }
+  };
+
   const startKirbyAndLogin = async () => {
     setKirbyReady(false);
     setKirbyStatusMsg('Layout Editor wird gestartet...');
 
-    try {
-      const res = await fetch('/api/auto-login', {
-        method: 'POST',
-        credentials: 'same-origin'
-      });
+    const targets = ['/api/auto-login', '/backend/api/auto-login'];
+    const maxAttempts = 3;
+    let lastError = null;
 
-      let data = {};
-      try {
-        data = await res.json();
-      } catch {
-        data = {};
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      for (const target of targets) {
+        try {
+          const res = await fetch(target, {
+            method: 'POST',
+            credentials: 'same-origin',
+          });
+
+          const raw = await res.text();
+          let data = {};
+          try {
+            data = raw ? JSON.parse(raw) : {};
+          } catch {
+            data = {};
+          }
+
+          if (!res.ok || !data.success) {
+            lastError = new Error(data.message || data.error || `HTTP ${res.status}`);
+            continue;
+          }
+
+          // Small delay to let cookie propagate to iframe request
+          await new Promise((r) => setTimeout(r, 300));
+          setKirbyReady(true);
+          setKirbyStatusMsg('');
+          return true;
+        } catch (error) {
+          lastError = error;
+        }
       }
 
-      if (!res.ok || !data.success) {
-        throw new Error(data.message || `HTTP ${res.status}`);
-      }
+      await new Promise((r) => setTimeout(r, 250 * attempt));
+    }
 
-      // Small delay to let cookie propagate to iframe request
-      await new Promise(r => setTimeout(r, 300));
+    const alreadyLoggedIn = await hasActivePanelSession();
+    if (alreadyLoggedIn) {
       setKirbyReady(true);
       setKirbyStatusMsg('');
       return true;
-    } catch (e) {
-      console.log('Kirby Auto-Login Fehler:', e.message);
-      setKirbyReady(false);
-      setKirbyStatusMsg('Kirby Session konnte nicht aufgebaut werden. Bitte erneut versuchen.');
-      return false;
     }
+
+    console.log('Kirby Auto-Login Fehler:', lastError?.message || 'unbekannt');
+    setKirbyReady(false);
+    setKirbyStatusMsg('Kirby Session konnte nicht aufgebaut werden. Bitte auf "Erneut verbinden" klicken.');
+    return false;
   };
 
   const openPanelOverview = async () => {
@@ -274,6 +363,11 @@ function App() {
   const handleOpenPublishModal = async () => {
     await startKirbyAndLogin();
     setShowExportModal(true);
+  };
+
+  const openLiveWebsite = () => {
+    if (!liveWebsiteUrl) return;
+    window.open(liveWebsiteUrl, '_blank', 'noopener,noreferrer');
   };
 
   const postBackendJson = async (path, payload) => {
@@ -771,18 +865,18 @@ function App() {
             </div>
 
             <div className="input-group" style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Zielpfad auf Server</label>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Zielordner auf dem Server</label>
               <input type="text" placeholder="/flatsite-test" value={ftpRemotePath} onChange={e => setFtpRemotePath(e.target.value)} />
               <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
-                Sicherheitsmodus: Kein Upload auf "/" erlaubt. Nutze einen Unterordner wie `/flatsite-test`.
+                Hierhin wird deine Website veröffentlicht (z.B. /flatsite-test oder /public_html). Der Stammordner "/" ist aus Sicherheitsgründen nicht erlaubt.
               </p>
             </div>
 
             <div className="input-group" style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website URL (für Auto-Entpacken)</label>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website-Adresse</label>
               <input type="text" placeholder="https://www.deine-domain.ch" value={siteUrl} onChange={e => setSiteUrl(e.target.value)} />
               <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.4rem' }}>
-                Wird nur beim Publizieren für den ZIP-Entpack-Schritt verwendet.
+                Wird beim Veröffentlichen verwendet, um den Upload automatisch zu entpacken.
               </p>
             </div>
 
@@ -853,6 +947,11 @@ function App() {
                 <button className="btn-outline" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}
                   onClick={openPanelOverview}>
                   Seitenübersicht
+                </button>
+                <button className="btn-outline" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', opacity: liveWebsiteUrl ? 1 : 0.5 }}
+                  onClick={openLiveWebsite}
+                  disabled={!liveWebsiteUrl}>
+                  Website ansehen
                 </button>
                 <button className="btn-outline" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}
                   onClick={() => setStep('provider')}>
@@ -944,12 +1043,12 @@ function App() {
             </div>
 
             <div className="input-group" style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Zielpfad auf Server</label>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Zielordner auf dem Server</label>
               <input type="text" placeholder="/flatsite-test" value={ftpRemotePath} onChange={e => setFtpRemotePath(e.target.value)} />
             </div>
 
             <div className="input-group" style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website URL (für Auto-Entpacken)</label>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website-Adresse</label>
               <input type="text" placeholder="https://www.deine-domain.ch" value={siteUrl} onChange={e => setSiteUrl(e.target.value)} />
             </div>
 
@@ -1006,6 +1105,11 @@ function App() {
                 <h3 style={{ margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
                   {exportResult.startsWith('Fehler') || exportResult.startsWith('Verbindung') ? '✗' : '✓'} {exportResult}
                 </h3>
+                {!exportResult.startsWith('Fehler') && !exportResult.startsWith('Verbindung') && liveWebsiteUrl && (
+                  <button className="btn-outline" style={{ marginTop: '1rem', padding: '0.8rem 1.2rem' }} onClick={openLiveWebsite}>
+                    Website ansehen
+                  </button>
+                )}
               </div>
             ) : (
               <div style={{ display: 'flex', gap: '0.8rem', justifyContent: 'center', flexWrap: 'wrap' }}>
