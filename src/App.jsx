@@ -261,10 +261,192 @@ function App() {
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [setupDone, setSetupDone] = useState(false);
   const [panelSrc, setPanelSrc] = useState('/panel/site');
+  const [currentProjectId, setCurrentProjectId] = useState('');
+  const [projects, setProjects] = useState([]);
+  const [showProjectList, setShowProjectList] = useState(false);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+  const [isOpeningProject, setIsOpeningProject] = useState(false);
+  const [projectError, setProjectError] = useState('');
 
   // Refs
   const editInputRef = useRef(null);
   const lastOnboardingSyncSignatureRef = useRef('');
+  const isApplyingProjectStateRef = useRef(false);
+
+  const collectProjectState = () => ({
+    projectName: projectName.trim(),
+    pages,
+    selectedDesign,
+    selectedColor,
+    ftpServer,
+    ftpUser,
+    ftpPassword,
+    ftpPort,
+    websiteUrl,
+    targetPath,
+    footerLine1,
+    footerLine2,
+    footerLine3,
+    setupDone,
+    isLive,
+    lastPublishedViewUrl,
+    lastPublishedSignature,
+  });
+
+  const applyProjectState = (state = {}) => {
+    isApplyingProjectStateRef.current = true;
+
+    setProjectName(String(state.projectName || ''));
+    setPages(Array.isArray(state.pages) && state.pages.length ? state.pages : DEFAULT_PAGES.map((p) => ({ ...p })));
+    setSelectedDesign(state.selectedDesign || 'minimalist');
+    setSelectedColor(Number.isFinite(state.selectedColor) ? state.selectedColor : 0);
+    setFtpServer(String(state.ftpServer ?? TEST_HOSTING_DEFAULTS.ftpServer));
+    setFtpUser(String(state.ftpUser ?? TEST_HOSTING_DEFAULTS.ftpUser));
+    setFtpPassword(String(state.ftpPassword ?? TEST_HOSTING_DEFAULTS.ftpPassword));
+    setFtpPort(String(state.ftpPort ?? TEST_HOSTING_DEFAULTS.ftpPort));
+    setWebsiteUrl(String(state.websiteUrl ?? TEST_HOSTING_DEFAULTS.websiteUrl));
+    setTargetPath(String(state.targetPath ?? TEST_HOSTING_DEFAULTS.targetPath));
+    setFooterLine1(String(state.footerLine1 ?? ''));
+    setFooterLine2(String(state.footerLine2 ?? ''));
+    setFooterLine3(String(state.footerLine3 ?? ''));
+    setSetupDone(Boolean(state.setupDone));
+    setIsLive(Boolean(state.isLive));
+    setLastPublishedViewUrl(String(state.lastPublishedViewUrl || ''));
+    setLastPublishedSignature(state.lastPublishedSignature ?? null);
+    setExportResult('');
+    setShowExportModal(false);
+    setKirbyReady(false);
+    setPanelSrc('/panel/site');
+    lastOnboardingSyncSignatureRef.current = '';
+
+    setTimeout(() => {
+      isApplyingProjectStateRef.current = false;
+    }, 0);
+  };
+
+  const pickFolder = async (promptText) => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/system/pick-folder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: promptText }),
+      });
+      const raw = await res.text();
+      let data = null;
+      try {
+        data = raw ? JSON.parse(raw) : null;
+      } catch {
+        data = null;
+      }
+
+      if (!res.ok) {
+        const fallbackError = 'Ordnerdialog konnte nicht geöffnet werden. Bitte prüfe, ob der Backend-Server läuft.';
+        setProjectError(data?.error || fallbackError);
+        return '';
+      }
+
+      if (!data?.success) {
+        setProjectError(data?.error || 'Ordnerdialog antwortet ungültig. Bitte Backend neu starten.');
+        return '';
+      }
+      if (data.canceled) return '';
+      return String(data.path || '');
+    } catch {
+      setProjectError('Backend nicht erreichbar. Bitte App-Server neu starten und erneut versuchen.');
+      return '';
+    }
+  };
+
+  const refreshProjects = async () => {
+    try {
+      setIsLoadingProjects(true);
+      const res = await fetch(`${BACKEND_URL}/api/projects/list`);
+      const data = await res.json();
+      if (!data?.success) return;
+
+      const listed = Array.isArray(data.projects) ? data.projects : [];
+      setProjects(listed);
+
+      const active = listed.find((project) => project.isActive);
+      if (active?.id) {
+        setCurrentProjectId(active.id);
+      }
+    } catch {
+      // ignore: project list is optional UI state
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  };
+
+  const saveCurrentProject = async (projectIdOverride = '') => {
+    const projectId = projectIdOverride || currentProjectId;
+    if (!projectId) return;
+
+    await fetch(`${BACKEND_URL}/api/projects/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        projectId,
+        state: collectProjectState(),
+      }),
+    });
+  };
+
+  const openExistingProject = async ({ projectId = '', projectPath = '' } = {}) => {
+    if ((!projectId && !projectPath) || isOpeningProject) return;
+    setProjectError('');
+    setIsOpeningProject(true);
+
+    try {
+      if (currentProjectId) {
+        await saveCurrentProject();
+      }
+
+      const res = await fetch(`${BACKEND_URL}/api/projects/open`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, projectPath }),
+      });
+      const data = await res.json();
+      if (!data?.success) {
+        setProjectError(data?.error || 'Projekt konnte nicht geöffnet werden');
+        return;
+      }
+
+      setCurrentProjectId(data.project.id);
+      applyProjectState(data.project.state || {});
+      setShowProjectList(false);
+      setStep(data.project.state?.setupDone ? 'editor' : 'config');
+      await refreshProjects();
+      await fetchProjectSignature();
+    } catch {
+      setProjectError('Projekt konnte nicht geöffnet werden');
+    } finally {
+      setIsOpeningProject(false);
+    }
+  };
+
+  const formatProjectDate = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('de-CH', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const formatProjectPath = (value = '') => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+
+    const normalized = raw.replace(/^\/Users\/[^/]+/, '~');
+    if (normalized.length <= 64) return normalized;
+    return `${normalized.slice(0, 30)}...${normalized.slice(-30)}`;
+  };
 
   /* ---- Effects ---- */
   useEffect(() => {
@@ -289,6 +471,7 @@ function App() {
 
   useEffect(() => {
     fetchProjectSignature();
+    refreshProjects();
   }, []);
 
   useEffect(() => {
@@ -308,6 +491,48 @@ function App() {
       clearInterval(intervalId);
     };
   }, [step]);
+
+  useEffect(() => {
+    if (!currentProjectId || step === 'welcome' || isApplyingProjectStateRef.current) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      saveCurrentProject().catch(() => {});
+    }, 700);
+
+    return () => clearTimeout(timer);
+  }, [
+    currentProjectId,
+    step,
+    projectName,
+    pages,
+    selectedDesign,
+    selectedColor,
+    ftpServer,
+    ftpUser,
+    ftpPassword,
+    ftpPort,
+    websiteUrl,
+    targetPath,
+    footerLine1,
+    footerLine2,
+    footerLine3,
+    setupDone,
+    isLive,
+    lastPublishedViewUrl,
+    lastPublishedSignature
+  ]);
+
+  useEffect(() => {
+    if (!currentProjectId || step !== 'editor') return;
+
+    const intervalId = setInterval(() => {
+      saveCurrentProject().catch(() => {});
+    }, 15000);
+
+    return () => clearInterval(intervalId);
+  }, [currentProjectId, step]);
 
   /* ---- Kirby Server & Auto-Login ---- */
   const startKirbyAndLogin = async () => {
@@ -356,7 +581,18 @@ function App() {
     setKirbyReady(true);
   };
 
-  const startNewProject = async () => {
+  const performStartNewProject = async (projectPath) => {
+    if (currentProjectId) {
+      try {
+        await saveCurrentProject();
+      } catch {
+        // ignore autosave errors when starting a new project
+      }
+    }
+
+    setProjectError('');
+    setShowProjectList(false);
+    setCurrentProjectId('');
     setProjectName('');
     setPages(DEFAULT_PAGES.map((p) => ({ ...p })));
     setNewPageName('');
@@ -415,11 +651,56 @@ function App() {
           colorText: defaultColor.text,
         }),
       });
+
+      const createRes = await fetch(`${BACKEND_URL}/api/projects/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectPath,
+          state: {
+            projectName: '',
+            pages: DEFAULT_PAGES.map((p) => ({ ...p })),
+            selectedDesign: 'minimalist',
+            selectedColor: 0,
+            ftpServer: TEST_HOSTING_DEFAULTS.ftpServer,
+            ftpUser: TEST_HOSTING_DEFAULTS.ftpUser,
+            ftpPassword: TEST_HOSTING_DEFAULTS.ftpPassword,
+            ftpPort: TEST_HOSTING_DEFAULTS.ftpPort,
+            websiteUrl: TEST_HOSTING_DEFAULTS.websiteUrl,
+            targetPath: TEST_HOSTING_DEFAULTS.targetPath,
+            footerLine1: '',
+            footerLine2: '',
+            footerLine3: '',
+            setupDone: false,
+            isLive: false,
+            lastPublishedViewUrl: '',
+            lastPublishedSignature: null,
+          },
+        }),
+      });
+      const createData = await createRes.json();
+      if (!createRes.ok || !createData?.success || !createData?.project?.id) {
+        setProjectError(createData?.error || 'Projekt konnte im gewählten Ordner nicht gespeichert werden.');
+        return;
+      }
+
+      setCurrentProjectId(createData.project.id);
+      await refreshProjects();
+      setStep('config');
     } catch (err) {
       console.error('Neues-Projekt-Reset fehlgeschlagen:', err);
+      setProjectError('Projekt konnte im gewählten Ordner nicht gespeichert werden.');
+    }
+  };
+
+  const startNewProject = async () => {
+    setProjectError('');
+    const chosenPath = await pickFolder('Wähle den Ordner für dein neues Projekt');
+    if (!chosenPath) {
+      return;
     }
 
-    setStep('config');
+    await performStartNewProject(chosenPath);
   };
 
   const buildWebsiteViewUrl = (urlInput = websiteUrl, targetPathInput = targetPath) => {
@@ -585,6 +866,7 @@ function App() {
     try {
       await syncProjectStateToKirby();
       lastOnboardingSyncSignatureRef.current = currentSyncSignature;
+      await saveCurrentProject();
     } catch (err) {
       console.error('Sync vor Editor fehlgeschlagen:', err);
     } finally {
@@ -599,6 +881,7 @@ function App() {
     try {
       await syncProjectStateToKirby({ includeAccount: true });
       lastOnboardingSyncSignatureRef.current = buildOnboardingSyncSignature();
+      await saveCurrentProject();
     } catch (err) {
       console.error('Setup error:', err);
     }
@@ -613,7 +896,6 @@ function App() {
     setExportResult('');
     const normalizedWebsiteUrl = normalizeWebsiteUrlInput(websiteUrl);
     let effectiveSignature = projectSignature;
-    let signatureAtDeploy = buildPublishSignature(normalizedWebsiteUrl, effectiveSignature);
     if (normalizedWebsiteUrl !== websiteUrl) {
       setWebsiteUrl(normalizedWebsiteUrl);
     }
@@ -645,7 +927,6 @@ function App() {
 
       const latestProjectSignature = await fetchProjectSignature();
       effectiveSignature = latestProjectSignature ?? projectSignature;
-      signatureAtDeploy = buildPublishSignature(normalizedWebsiteUrl, effectiveSignature);
 
       const controller = new AbortController();
       timeout = setTimeout(() => controller.abort(), 120000);
@@ -681,6 +962,7 @@ function App() {
           buildWebsiteViewUrl(normalizedWebsiteUrl, targetPath);
         setLastPublishedViewUrl(publishedViewUrl);
         setLastPublishedSignature(buildPublishSignature(normalizedWebsiteUrl, finalSignature));
+        await saveCurrentProject();
       } else {
         setExportResult('Hoppla, der Upload klemmt kurz.');
       }
@@ -784,7 +1066,7 @@ function App() {
               fontWeight: 800, fontSize: '1.2rem', letterSpacing: '-0.5px', cursor: 'pointer',
               background: 'linear-gradient(135deg, var(--text-primary) 0%, rgba(255,255,255,0.5) 100%)',
               WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
-            }} onClick={() => setStep('welcome')}>
+            }} onClick={() => { setShowProjectList(false); setProjectError(''); setStep('welcome'); }}>
               Flatsite
             </div>
           </div>
@@ -860,10 +1142,125 @@ function App() {
                 Projekt starten
               </button>
               <button className="btn-outline fade-in" style={{ padding: '1rem 2rem', fontSize: '1.1rem', minWidth: '220px', background: 'rgba(255,255,255,0.05)' }}
-                onClick={() => setStep('editor')}>
+                onClick={async () => {
+                  setProjectError('');
+                  setShowProjectList(true);
+                  await refreshProjects();
+                }}>
                 Projekt fortsetzen
               </button>
             </div>
+            {projectError && !showProjectList && (
+              <div style={{ color: '#ff8080', fontSize: '0.9rem', marginTop: '0.9rem' }}>{projectError}</div>
+            )}
+            {showProjectList && (
+              <div
+                className="fade-in"
+                style={{
+                  position: 'fixed',
+                  inset: 0,
+                  background: 'rgba(0, 0, 0, 0.55)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 1200,
+                  padding: '1rem'
+                }}
+                onClick={() => {
+                  setShowProjectList(false);
+                  setProjectError('');
+                }}
+              >
+                <div
+                  className="glass-panel"
+                  style={{
+                    width: '100%',
+                    maxWidth: '760px',
+                    borderRadius: '12px',
+                    padding: '1rem',
+                    textAlign: 'left',
+                    maxHeight: '84vh',
+                    overflow: 'auto'
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.7rem' }}>
+                    <strong style={{ fontSize: '1rem' }}>Bestehende Projekte</strong>
+                    <button
+                      className="btn-outline"
+                      style={{ padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
+                      onClick={() => {
+                        setShowProjectList(false);
+                        setProjectError('');
+                      }}
+                      disabled={isOpeningProject}
+                    >
+                      Schließen
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                    <button
+                      className="btn-outline"
+                      style={{ padding: '0.45rem 0.8rem', fontSize: '0.78rem' }}
+                      onClick={refreshProjects}
+                      disabled={isLoadingProjects || isOpeningProject}
+                    >
+                      Aktualisieren
+                    </button>
+                    <button
+                      className="btn-primary"
+                      style={{ padding: '0.45rem 0.8rem', fontSize: '0.78rem' }}
+                      onClick={async () => {
+                        setProjectError('');
+                        const chosenProjectFolder = await pickFolder('Wähle deinen Projektordner');
+                        if (chosenProjectFolder) {
+                          await openExistingProject({ projectPath: chosenProjectFolder });
+                        }
+                      }}
+                      disabled={isOpeningProject}
+                    >
+                      Einen anderen Ordner wählen
+                    </button>
+                  </div>
+                  {projectError && (
+                    <div style={{ color: '#ff8080', fontSize: '0.85rem', marginBottom: '0.6rem' }}>{projectError}</div>
+                  )}
+                  {isLoadingProjects ? (
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Lade Projekte...</div>
+                  ) : projects.length === 0 ? (
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Noch kein gespeichertes Projekt gefunden.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
+                      {projects.map((project) => (
+                        <button
+                          key={project.id}
+                          className="btn-outline"
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '0.6rem 0.8rem',
+                            fontSize: '0.85rem',
+                            textAlign: 'left'
+                          }}
+                          onClick={() => openExistingProject({ projectId: project.id })}
+                          disabled={isOpeningProject}
+                        >
+                          <span style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{project.name || 'Unbenanntes Projekt'}</span>
+                            <span style={{ color: 'var(--text-secondary)', fontSize: '0.72rem' }}>{formatProjectPath(project.path)}</span>
+                          </span>
+                          <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem' }}>
+                            {formatProjectDate(project.updatedAt || project.createdAt)}
+                            {project.id === currentProjectId ? ' · aktiv' : ''}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',

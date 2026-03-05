@@ -24,6 +24,11 @@ const DEFAULT_ADMIN_NAME = 'Flatsite Admin';
 const DEFAULT_ADMIN_LANGUAGE = 'de';
 const DEFAULT_ADMIN_ROLE = 'admin';
 const DEFAULT_ADMIN_BCRYPT = '$2y$12$KtDqJZUN.tjtrv9dktoYS.4F6PYxZtEvM0t3rxGzEfjQGg5ln0lBK';
+const FLATSITE_DIR = path.join(__dirname, '.flatsite');
+const STORAGE_CONFIG_FILE = path.join(FLATSITE_DIR, 'config.json');
+const ACTIVE_PROJECT_FILE = path.join(FLATSITE_DIR, 'active-project.json');
+const LIVE_CONTENT_DIR = path.join(__dirname, 'kirby-cms', 'content');
+const LIVE_CUSTOM_CSS_PATH = path.join(__dirname, 'kirby-cms', 'assets', 'css', 'custom.css');
 
 const parseField = (content, key) => {
     const match = content.match(new RegExp(`^${key}:\\s*(.+)$`, 'mi'));
@@ -995,6 +1000,430 @@ const computeProjectSignature = () => {
     return hash.digest('hex');
 };
 
+const writeJsonFile = (filePath, payload) => {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
+};
+
+const readJsonFileOrNull = (filePath) => {
+    if (!fs.existsSync(filePath)) return null;
+    try {
+        return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    } catch {
+        return null;
+    }
+};
+
+const ensureFlatsiteDir = () => {
+    fs.mkdirSync(FLATSITE_DIR, { recursive: true });
+};
+
+const normalizeProjectPath = (value = '') => {
+    const raw = String(value ?? '').trim();
+    if (!raw) {
+        throw new Error('Projektpfad fehlt');
+    }
+    return path.resolve(raw);
+};
+
+const PROJECT_META_DIR_NAME = 'flatsite-project';
+const LEGACY_PROJECT_META_DIR_NAME = '.flatsite-project';
+
+const projectMetaDirVisible = (projectPath) => path.join(projectPath, PROJECT_META_DIR_NAME);
+const projectMetaDirLegacy = (projectPath) => path.join(projectPath, LEGACY_PROJECT_META_DIR_NAME);
+
+const resolveProjectMetaDir = (projectPath, { forWrite = false } = {}) => {
+    const visibleDir = projectMetaDirVisible(projectPath);
+    const legacyDir = projectMetaDirLegacy(projectPath);
+
+    if (forWrite) return visibleDir;
+    if (fs.existsSync(visibleDir)) return visibleDir;
+    if (fs.existsSync(legacyDir)) return legacyDir;
+    return visibleDir;
+};
+
+const projectManifestPath = (projectPath, options = {}) =>
+    path.join(resolveProjectMetaDir(projectPath, options), 'manifest.json');
+const projectStatePath = (projectPath, options = {}) =>
+    path.join(resolveProjectMetaDir(projectPath, options), 'state.json');
+const projectSnapshotContentPath = (projectPath, options = {}) =>
+    path.join(resolveProjectMetaDir(projectPath, options), 'snapshot', 'content');
+const projectSnapshotCssPath = (projectPath, options = {}) =>
+    path.join(resolveProjectMetaDir(projectPath, options), 'snapshot', 'custom.css');
+const HISTORY_FILE = path.join(FLATSITE_DIR, 'projects-history.json');
+
+const projectIdFromPath = (projectPath) =>
+    crypto.createHash('sha1').update(projectPath).digest('hex').slice(0, 12);
+
+const readUiConfig = () => {
+    ensureFlatsiteDir();
+    return readJsonFileOrNull(STORAGE_CONFIG_FILE) || {};
+};
+
+const writeUiConfig = (config = {}) => {
+    ensureFlatsiteDir();
+    writeJsonFile(STORAGE_CONFIG_FILE, config);
+};
+
+const setActiveProjectPath = (projectPath) => {
+    ensureFlatsiteDir();
+    writeJsonFile(ACTIVE_PROJECT_FILE, { projectPath });
+};
+
+const getActiveProjectPath = () => {
+    const data = readJsonFileOrNull(ACTIVE_PROJECT_FILE);
+    return data?.projectPath ? normalizeProjectPath(data.projectPath) : '';
+};
+
+const readProjectHistory = () => {
+    const data = readJsonFileOrNull(HISTORY_FILE);
+    if (!Array.isArray(data?.projects)) {
+        return { projects: [] };
+    }
+    return {
+        projects: data.projects.filter((entry) => Boolean(entry?.path))
+    };
+};
+
+const writeProjectHistory = (history) => {
+    writeJsonFile(HISTORY_FILE, {
+        projects: Array.isArray(history?.projects) ? history.projects : []
+    });
+};
+
+const touchProjectInHistory = (manifest) => {
+    const history = readProjectHistory();
+    const normalizedPath = normalizeProjectPath(manifest.path);
+    const now = new Date().toISOString();
+
+    const filtered = history.projects.filter((entry) => normalizeProjectPath(entry.path) !== normalizedPath);
+    filtered.unshift({
+        id: manifest.id,
+        name: manifest.name,
+        path: normalizedPath,
+        updatedAt: now
+    });
+
+    writeProjectHistory({ projects: filtered.slice(0, 50) });
+};
+
+const snapshotLiveProjectToStore = (projectPath) => {
+    const snapshotContentDir = projectSnapshotContentPath(projectPath, { forWrite: true });
+    const snapshotCss = projectSnapshotCssPath(projectPath, { forWrite: true });
+
+    fs.rmSync(snapshotContentDir, { recursive: true, force: true });
+    fs.mkdirSync(path.dirname(snapshotContentDir), { recursive: true });
+    if (fs.existsSync(LIVE_CONTENT_DIR)) {
+        fs.cpSync(LIVE_CONTENT_DIR, snapshotContentDir, { recursive: true });
+    } else {
+        fs.mkdirSync(snapshotContentDir, { recursive: true });
+    }
+
+    fs.mkdirSync(path.dirname(snapshotCss), { recursive: true });
+    if (fs.existsSync(LIVE_CUSTOM_CSS_PATH)) {
+        fs.copyFileSync(LIVE_CUSTOM_CSS_PATH, snapshotCss);
+    } else {
+        fs.writeFileSync(snapshotCss, '', 'utf-8');
+    }
+};
+
+const restoreStoredProjectToLive = (projectPath) => {
+    const snapshotContentDir = projectSnapshotContentPath(projectPath);
+    const snapshotCss = projectSnapshotCssPath(projectPath);
+
+    fs.rmSync(LIVE_CONTENT_DIR, { recursive: true, force: true });
+    if (fs.existsSync(snapshotContentDir)) {
+        fs.cpSync(snapshotContentDir, LIVE_CONTENT_DIR, { recursive: true });
+    } else {
+        fs.mkdirSync(LIVE_CONTENT_DIR, { recursive: true });
+    }
+
+    fs.mkdirSync(path.dirname(LIVE_CUSTOM_CSS_PATH), { recursive: true });
+    if (fs.existsSync(snapshotCss)) {
+        fs.copyFileSync(snapshotCss, LIVE_CUSTOM_CSS_PATH);
+    }
+};
+
+const saveProjectAtPath = (projectPathInput, statePayload = {}) => {
+    const projectPath = normalizeProjectPath(projectPathInput);
+    const metaDir = resolveProjectMetaDir(projectPath, { forWrite: true });
+    const previousManifest = readJsonFileOrNull(projectManifestPath(projectPath));
+    const now = new Date().toISOString();
+
+    fs.mkdirSync(projectPath, { recursive: true });
+    fs.mkdirSync(metaDir, { recursive: true });
+
+    const fallbackName = path.basename(projectPath) || 'Unbenanntes Projekt';
+    const name = String(statePayload?.projectName || previousManifest?.name || fallbackName).trim() || fallbackName;
+    const manifest = {
+        id: previousManifest?.id || projectIdFromPath(projectPath),
+        name,
+        path: projectPath,
+        createdAt: previousManifest?.createdAt || now,
+        updatedAt: now
+    };
+
+    writeJsonFile(projectManifestPath(projectPath, { forWrite: true }), manifest);
+    writeJsonFile(projectStatePath(projectPath, { forWrite: true }), statePayload || {});
+    snapshotLiveProjectToStore(projectPath);
+    touchProjectInHistory(manifest);
+    setActiveProjectPath(projectPath);
+
+    return manifest;
+};
+
+const resolveProjectPathFromRequest = ({ projectId = '', projectPath = '' } = {}) => {
+    if (projectPath) {
+        return normalizeProjectPath(projectPath);
+    }
+
+    if (projectId) {
+        const history = readProjectHistory();
+        const match = history.projects.find((entry) => entry.id === projectId);
+        if (match?.path) {
+            return normalizeProjectPath(match.path);
+        }
+    }
+
+    const active = getActiveProjectPath();
+    if (active) return active;
+    throw new Error('Projekt konnte nicht gefunden werden');
+};
+
+const openProjectByPath = (projectPathInput) => {
+    const projectPath = normalizeProjectPath(projectPathInput);
+    const manifest = readJsonFileOrNull(projectManifestPath(projectPath));
+    if (!manifest) throw new Error('In diesem Ordner wurde kein Flatsite-Projekt gefunden');
+
+    const state = readJsonFileOrNull(projectStatePath(projectPath)) || {};
+    restoreStoredProjectToLive(projectPath);
+
+    const now = new Date().toISOString();
+    const nextManifest = { ...manifest, updatedAt: now, path: projectPath };
+    writeJsonFile(projectManifestPath(projectPath, { forWrite: true }), nextManifest);
+    touchProjectInHistory(nextManifest);
+    setActiveProjectPath(projectPath);
+
+    return { ...nextManifest, state };
+};
+
+const listProjects = () => {
+    const history = readProjectHistory();
+    const activeProjectPath = getActiveProjectPath();
+
+    const projects = [];
+    for (const entry of history.projects) {
+        try {
+            const projectPath = normalizeProjectPath(entry.path);
+            if (!fs.existsSync(projectManifestPath(projectPath))) continue;
+            const manifest = readJsonFileOrNull(projectManifestPath(projectPath));
+            if (!manifest) continue;
+
+            projects.push({
+                id: manifest.id || projectIdFromPath(projectPath),
+                name: manifest.name || entry.name || path.basename(projectPath) || 'Unbenanntes Projekt',
+                path: projectPath,
+                createdAt: manifest.createdAt || null,
+                updatedAt: manifest.updatedAt || entry.updatedAt || null,
+                isActive: activeProjectPath ? projectPath === activeProjectPath : false
+            });
+        } catch {
+            // ignore invalid history entries
+        }
+    }
+
+    projects.sort((a, b) => {
+        const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
+        const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
+        return bTime - aTime;
+    });
+
+    return projects;
+};
+
+app.post('/api/system/pick-folder', express.json(), async (req, res) => {
+    const prompt = String(req.body?.prompt || 'Wähle einen Ordner');
+    const requestedInitial = String(req.body?.initialPath || '').trim();
+    const uiConfig = readUiConfig();
+    let initialPath = requestedInitial || String(uiConfig.lastPickerPath || '').trim() || path.join(os.homedir(), 'Documents');
+
+    try {
+        initialPath = normalizeProjectPath(initialPath);
+    } catch {
+        initialPath = path.join(os.homedir(), 'Documents');
+    }
+
+    if (!fs.existsSync(initialPath)) {
+        initialPath = path.join(os.homedir(), 'Documents');
+    }
+
+    try {
+        const platform = os.platform();
+        let result = '';
+
+        if (platform === 'darwin') {
+            const jxaScript = `
+const app = Application.currentApplication();
+app.includeStandardAdditions = true;
+const prompt = ${JSON.stringify(prompt)};
+const initialPath = ${JSON.stringify(initialPath)};
+
+const isCanceled = (error) => {
+  const message = String((error && error.message) || error || "");
+  return message.includes("-128") || /User cancelled|User canceled|abgebrochen/i.test(message);
+};
+
+let chosen = null;
+let output = "";
+
+try {
+  chosen = app.chooseFolder({
+    withPrompt: prompt,
+    defaultLocation: Path(initialPath)
+  });
+} catch (error) {
+  if (isCanceled(error)) {
+    output = "__CANCELED__";
+  } else {
+    try {
+      chosen = app.chooseFolder({ withPrompt: prompt });
+    } catch (fallbackError) {
+      if (isCanceled(fallbackError)) {
+        output = "__CANCELED__";
+      } else {
+        throw fallbackError;
+      }
+    }
+  }
+}
+
+if (chosen) {
+  output = chosen.toString();
+}
+
+output;
+`;
+            const { stdout } = await execPromise(`osascript -l JavaScript -e ${shQuote(jxaScript)}`);
+            result = String(stdout || '').trim();
+        } else if (platform === 'win32') {
+            const psEscape = (value = '') => String(value).replace(/'/g, "''");
+            const psScript = `
+Add-Type -AssemblyName System.Windows.Forms
+$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+$dialog.Description = '${psEscape(prompt)}'
+$dialog.ShowNewFolderButton = $true
+if (Test-Path '${psEscape(initialPath)}') { $dialog.SelectedPath = '${psEscape(initialPath)}' }
+$result = $dialog.ShowDialog()
+if ($result -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $dialog.SelectedPath }
+`;
+            const { stdout } = await execPromise(`powershell -NoProfile -ExecutionPolicy Bypass -Command ${shQuote(psScript)}`);
+            result = String(stdout || '').trim();
+        } else {
+            try {
+                const zenityDir = initialPath.endsWith(path.sep) ? initialPath : `${initialPath}${path.sep}`;
+                const { stdout } = await execPromise(
+                    `zenity --file-selection --directory --title=${shQuote(prompt)} --filename=${shQuote(zenityDir)}`
+                );
+                result = String(stdout || '').trim();
+            } catch (zenityErr) {
+                const zenityMsg = String(zenityErr?.message || '');
+                if (/command not found|not found/i.test(zenityMsg)) {
+                    const { stdout } = await execPromise(
+                        `kdialog --getexistingdirectory ${shQuote(initialPath)} --title ${shQuote(prompt)}`
+                    );
+                    result = String(stdout || '').trim();
+                } else {
+                    throw zenityErr;
+                }
+            }
+        }
+
+        if (!result || result === '__CANCELED__') {
+            return res.json({ success: true, canceled: true });
+        }
+
+        const folderPath = normalizeProjectPath(result);
+        writeUiConfig({ ...uiConfig, lastPickerPath: folderPath });
+        res.json({ success: true, canceled: false, path: folderPath });
+    } catch (err) {
+        const message = String(err?.message || '');
+        if (message.includes('-128') || /User canceled/i.test(message)) {
+            return res.json({ success: true, canceled: true });
+        }
+        console.error('Fehler beim Öffnen des Ordnerdialogs:', err);
+        res.status(500).json({
+            success: false,
+            error: `Ordner-Auswahl konnte nicht geöffnet werden (${message || 'unbekannter Fehler'})`
+        });
+    }
+});
+
+// ENDPOINTS: PROJECT MANAGEMENT
+app.get('/api/projects/list', (req, res) => {
+    try {
+        const projects = listProjects();
+        const activeProjectPath = getActiveProjectPath() || null;
+        res.json({ success: true, projects, activeProjectPath });
+    } catch (err) {
+        console.error('Fehler beim Laden der Projekte:', err);
+        res.status(500).json({ success: false, error: 'Projekte konnten nicht geladen werden' });
+    }
+});
+
+app.post('/api/projects/create', express.json(), (req, res) => {
+    try {
+        const projectPath = normalizeProjectPath(req.body?.projectPath || '');
+        const state = req.body?.state || {};
+        const project = saveProjectAtPath(projectPath, state);
+        res.json({ success: true, project });
+    } catch (err) {
+        console.error('Fehler beim Erstellen des Projekts:', err);
+        res.status(400).json({ success: false, error: err.message || 'Projekt konnte nicht erstellt werden' });
+    }
+});
+
+app.post('/api/projects/save', express.json(), (req, res) => {
+    try {
+        const projectPath = resolveProjectPathFromRequest({
+            projectId: req.body?.projectId,
+            projectPath: req.body?.projectPath
+        });
+        const state = req.body?.state || {};
+        const project = saveProjectAtPath(projectPath, state);
+        res.json({ success: true, project });
+    } catch (err) {
+        console.error('Fehler beim Speichern des Projekts:', err);
+        res.status(400).json({ success: false, error: err.message || 'Projekt konnte nicht gespeichert werden' });
+    }
+});
+
+app.post('/api/projects/open', express.json(), (req, res) => {
+    try {
+        const projectPath = resolveProjectPathFromRequest({
+            projectId: req.body?.projectId,
+            projectPath: req.body?.projectPath
+        });
+        const project = openProjectByPath(projectPath);
+        res.json({ success: true, project });
+    } catch (err) {
+        console.error('Fehler beim Oeffnen des Projekts:', err);
+        res.status(404).json({ success: false, error: err.message || 'Projekt konnte nicht geoeffnet werden' });
+    }
+});
+
+app.get('/api/projects/current', (req, res) => {
+    try {
+        const activePath = getActiveProjectPath();
+        if (!activePath) {
+            return res.json({ success: true, project: null });
+        }
+        const project = openProjectByPath(activePath);
+        res.json({ success: true, project });
+    } catch {
+        res.json({ success: true, project: null });
+    }
+});
+
 // ENDPOINT: START PHP SERVER (Kirby CMS)
 app.post('/api/start-kirby', async (req, res) => {
     const kirbyPath = path.join(__dirname, 'kirby-cms');
@@ -1205,7 +1634,7 @@ app.post('/api/deploy', async (req, res) => {
 
 // ENDPOINT: UPDATE THEME VARIABLES (CSS Manipulation)
 app.post('/api/update-theme', (req, res) => {
-    const { design, font, colorPrimary, colorBg, colorText } = req.body;
+    const { font, colorPrimary, colorBg, colorText } = req.body;
     const cssPath = path.join(__dirname, 'kirby-cms', 'assets', 'css', 'custom.css');
 
     // This simulates injecting Flatsite's choices into the Kirby Theme
