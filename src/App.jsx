@@ -356,10 +356,6 @@ function App() {
     setKirbyReady(true);
   };
 
-  const openPanelOverview = () => {
-    setPanelSrc(`/panel/site?from=flatsite&ts=${Date.now()}`);
-  };
-
   const startNewProject = async () => {
     setProjectName('');
     setPages(DEFAULT_PAGES.map((p) => ({ ...p })));
@@ -778,11 +774,11 @@ function App() {
           ================================================================ */}
       {step !== 'welcome' && (
         <header className="glass-panel fade-in" style={{
-          padding: '1rem 2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          padding: '1rem 2rem', display: 'flex', alignItems: 'center', gap: '1.5rem',
           borderBottom: '1px solid var(--border-color)', borderRadius: 0, position: 'sticky', top: 0, zIndex: 10
         }}>
-          {/* Logo & Status */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+          {/* Logo */}
+          <div style={{ display: 'flex', alignItems: 'center' }}>
             <div style={{
               fontWeight: 800, fontSize: '1.2rem', letterSpacing: '-0.5px', cursor: 'pointer',
               background: 'linear-gradient(135deg, var(--text-primary) 0%, rgba(255,255,255,0.5) 100%)',
@@ -790,20 +786,10 @@ function App() {
             }} onClick={() => setStep('welcome')}>
               Flatsite
             </div>
-            <span style={{
-              background: isLive ? 'rgba(140,198,63,0.15)' : 'rgba(255,152,0,0.1)',
-              color: isLive ? '#8cc63f' : '#ff9800',
-              padding: '0.2rem 0.6rem',
-              borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase',
-              letterSpacing: '1px',
-              border: isLive ? '1px solid rgba(140,198,63,0.35)' : '1px solid rgba(255,152,0,0.3)'
-            }}>
-              {isLive ? 'Live' : 'Lokal (Entwurf)'}
-            </span>
           </div>
 
           {/* Navigation Links */}
-          <div style={{ display: 'flex', gap: '2rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'center', gap: '2rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
             {navItems.map((nav) => {
               const isActive = step === nav.state || (nav.label === 'Übersicht' && step === 'provider');
               return (
@@ -826,6 +812,18 @@ function App() {
               );
             })}
           </div>
+
+          {/* Status */}
+          <span style={{
+            background: isLive ? 'rgba(140,198,63,0.15)' : 'rgba(255,152,0,0.1)',
+            color: isLive ? '#8cc63f' : '#ff9800',
+            padding: '0.2rem 0.6rem',
+            borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase',
+            letterSpacing: '1px',
+            border: isLive ? '1px solid rgba(140,198,63,0.35)' : '1px solid rgba(255,152,0,0.3)'
+          }}>
+            {isLive ? 'Live' : 'Lokal (Entwurf)'}
+          </span>
 
         </header>
       )}
@@ -1115,35 +1113,13 @@ function App() {
               padding: '1rem 2rem', background: 'var(--surface-color)',
               borderBottom: '1px solid var(--border-color)'
             }}>
-              {/* Left: Design Info */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
-                  <div style={{ width: '120px', height: '70px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}>
-                    <MiniSitePreview themeKey={selectedDesign} colorIndex={selectedColor} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                      {THEMES[selectedDesign]?.name} · {getColor(selectedDesign, selectedColor)?.name}
-                    </div>
-                    <span onClick={() => setStep('design')} style={{
-                      fontSize: '0.8rem', color: '#4facfe', cursor: 'pointer', textDecoration: 'underline'
-                    }}>
-                      Design ändern
-                    </span>
-                  </div>
-                </div>
+              {/* Left: compact design info */}
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                Design: {THEMES[selectedDesign]?.name} · {getColor(selectedDesign, selectedColor)?.name}
               </div>
 
               {/* Right: Actions */}
               <div style={{ display: 'flex', gap: '0.8rem' }}>
-                <button className="btn-outline" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}
-                  onClick={openPanelOverview}>
-                  Seitenübersicht
-                </button>
-                <button className="btn-outline" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}
-                  onClick={() => setStep('provider')}>
-                  Providerwechsel
-                </button>
                 <button
                   className="btn-outline"
                   style={{
@@ -1157,6 +1133,10 @@ function App() {
                   title={canOpenWebsite ? websiteViewUrl : 'Bitte zuerst Website URL erfassen'}
                 >
                   Website ansehen
+                </button>
+                <button className="btn-outline" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}
+                  onClick={() => setStep('provider')}>
+                  Provider wechseln
                 </button>
                 <button className="btn-primary" style={{
                   padding: '0.5rem 1.5rem',
