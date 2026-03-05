@@ -1634,6 +1634,14 @@ function App() {
               Du möchtest deine Website bei einem anderen Hosting-Anbieter betreiben?
               Trage einfach die neuen Zugangsdaten ein. Beim nächsten Live-Schalten wird die Seite auf dem neuen Server hochgeladen.
             </p>
+            <button
+              type="button"
+              className="btn-outline"
+              style={{ marginTop: '-1.2rem', marginBottom: '1.2rem', fontSize: '0.82rem', padding: '0.45rem 0.8rem' }}
+              onClick={() => setShowProviderGuide(true)}
+            >
+              Du weißt nicht, wo du diese Daten findest?
+            </button>
 
             <div className="input-group" style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Server-Adresse</label>
