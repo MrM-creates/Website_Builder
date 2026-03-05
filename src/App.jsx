@@ -117,7 +117,7 @@ const TEST_HOSTING_DEFAULTS = {
   ftpPassword: '',
   ftpPort: '21',
   websiteUrl: 'https://swiss-ai-community.ch',
-  targetPath: '/flatsite-test',
+  targetPath: '/',
 };
 
 /* ==========================================================================

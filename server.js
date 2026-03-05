@@ -613,6 +613,221 @@ const triggerRemoteUnzip = async (urls = []) => {
     };
 };
 
+const KIRBY_LOCAL_ORIGIN = 'http://127.0.0.1:8000';
+const LOCAL_ORIGIN_CANDIDATES = [
+    'http://127.0.0.1:5173',
+    'http://localhost:5173',
+    'http://127.0.0.1:8000',
+    'http://localhost:8000'
+];
+
+const delay = (ms = 0) =>
+    new Promise((resolve) => {
+        setTimeout(resolve, ms);
+    });
+
+const listPublicPagePaths = (contentRoot) => {
+    const listedPages = [];
+
+    if (fs.existsSync(contentRoot)) {
+        const dirs = fs
+            .readdirSync(contentRoot, { withFileTypes: true })
+            .filter((entry) => entry.isDirectory() && /^\d+_/.test(entry.name))
+            .map((entry) => entry.name)
+            .sort((a, b) => {
+                const aNum = parseInt(a.split('_')[0], 10) || 0;
+                const bNum = parseInt(b.split('_')[0], 10) || 0;
+                return aNum - bNum;
+            });
+
+        for (const dir of dirs) {
+            const slug = dir.replace(/^\d+_/, '').trim();
+            if (!slug || slug === 'error') continue;
+            listedPages.push(`/${slug}`);
+        }
+    }
+
+    return ['/', ...listedPages];
+};
+
+const normalizePathForFileOutput = (pathname = '/') => {
+    const raw = String(pathname || '/').split('?')[0].split('#')[0];
+    const withLeadingSlash = raw.startsWith('/') ? raw : `/${raw}`;
+    return withLeadingSlash.replace(/\/+/g, '/');
+};
+
+const writeStaticPage = (exportRoot, pathname, html) => {
+    const normalizedPath = normalizePathForFileOutput(pathname);
+    const isRoot = normalizedPath === '/';
+    const outputPath = isRoot
+        ? path.join(exportRoot, 'index.html')
+        : path.join(exportRoot, normalizedPath.replace(/^\/|\/$/g, ''), 'index.html');
+
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+    fs.writeFileSync(outputPath, html, 'utf-8');
+};
+
+const buildPublishBaseUrl = (websiteUrl, targetPath) => {
+    const normalizedWebsiteUrl = normalizeWebsiteUrl(websiteUrl);
+    if (!normalizedWebsiteUrl) return '';
+
+    try {
+        const parsed = new URL(normalizedWebsiteUrl);
+        const basePath = normalizePublicPath(parsed.pathname);
+        const publishPath = normalizePublicPath(targetPath);
+
+        if (publishPath) {
+            if (!basePath) {
+                parsed.pathname = publishPath;
+            } else if (basePath !== publishPath) {
+                parsed.pathname = `${basePath}/${publishPath}`.replace(/\/+/g, '/');
+            } else {
+                parsed.pathname = basePath;
+            }
+        } else {
+            parsed.pathname = basePath || '/';
+        }
+
+        parsed.search = '';
+        parsed.hash = '';
+        return parsed.toString().replace(/\/+$/g, '');
+    } catch {
+        return '';
+    }
+};
+
+const buildPublishPathPrefix = (websiteUrl, targetPath) => {
+    const publishBaseUrl = buildPublishBaseUrl(websiteUrl, targetPath);
+    if (publishBaseUrl) {
+        try {
+            const parsed = new URL(publishBaseUrl);
+            return normalizePublicPath(parsed.pathname);
+        } catch {
+            // ignore
+        }
+    }
+
+    return normalizePublicPath(targetPath);
+};
+
+const rewriteHtmlForStaticDeploy = (html, { websiteUrl, targetPath }) => {
+    let output = String(html ?? '');
+    const publishBaseUrl = buildPublishBaseUrl(websiteUrl, targetPath);
+    const pathPrefix = buildPublishPathPrefix(websiteUrl, targetPath);
+
+    if (publishBaseUrl) {
+        for (const origin of LOCAL_ORIGIN_CANDIDATES) {
+            output = output.split(origin).join(publishBaseUrl);
+        }
+    }
+
+    if (pathPrefix) {
+        output = output.replace(/(href|src|content)=("|')\/(?!\/)/gi, `$1=$2${pathPrefix}/`);
+        output = output.replace(/url\((["']?)\/(?!\/)/gi, `url($1${pathPrefix}/`);
+    }
+
+    return output;
+};
+
+const copyDirectoryIfExists = (sourceDir, targetDir) => {
+    if (!fs.existsSync(sourceDir)) return;
+    fs.mkdirSync(path.dirname(targetDir), { recursive: true });
+    fs.cpSync(sourceDir, targetDir, { recursive: true });
+};
+
+const removePathIfExists = (targetPath) => {
+    if (!targetPath) return;
+    if (fs.existsSync(targetPath)) {
+        fs.rmSync(targetPath, { recursive: true, force: true });
+    }
+};
+
+const fetchKirbyPageHtml = async (pathname = '/') => {
+    const normalizedPath = normalizePathForFileOutput(pathname);
+    const response = await fetchWithTimeout(`${KIRBY_LOCAL_ORIGIN}${normalizedPath}`, 15000);
+
+    if (!response.ok) {
+        throw new Error(`Seite ${normalizedPath} konnte nicht gerendert werden (HTTP ${response.status})`);
+    }
+
+    return response.text();
+};
+
+const isKirbyReachable = async () => {
+    try {
+        const response = await fetchWithTimeout(`${KIRBY_LOCAL_ORIGIN}/`, 2500);
+        return response.ok || response.status === 302;
+    } catch {
+        return false;
+    }
+};
+
+// State to keep track of the running PHP server
+let phpServerProcess = null;
+
+const startKirbyPhpServer = async (kirbyPath) =>
+    new Promise((resolve) => {
+        console.log(`Starte Kirby PHP Server im Ordner: ${kirbyPath}...`);
+
+        exec('lsof -t -i:8000 | xargs kill -9', () => {
+            const routerPath = path.join(kirbyPath, 'kirby', 'router.php');
+            phpServerProcess = spawn('/opt/homebrew/bin/php', ['-S', '127.0.0.1:8000', routerPath], {
+                cwd: kirbyPath,
+                stdio: 'inherit'
+            });
+
+            phpServerProcess.on('error', (err) => {
+                console.error('Fehler beim Starten des PHP Servers:', err);
+            });
+
+            setTimeout(resolve, 1100);
+        });
+    });
+
+const ensureKirbyReachable = async (kirbyPath) => {
+    if (await isKirbyReachable()) {
+        return;
+    }
+
+    await startKirbyPhpServer(kirbyPath);
+    await delay(500);
+
+    if (await isKirbyReachable()) {
+        return;
+    }
+
+    throw new Error('Kirby Server ist nicht erreichbar. Bitte Server starten und erneut versuchen.');
+};
+
+const buildStaticDeploySource = async ({ kirbyRoot, websiteUrl, targetPath }) => {
+    await ensureKirbyReachable(kirbyRoot);
+
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'flatsite-static-'));
+    const exportRoot = path.join(tempRoot, 'site-export');
+    fs.mkdirSync(exportRoot, { recursive: true });
+
+    const contentRoot = path.join(kirbyRoot, 'content');
+    const pagePaths = listPublicPagePaths(contentRoot);
+
+    for (const pagePath of pagePaths) {
+        const rawHtml = await fetchKirbyPageHtml(pagePath);
+        const rewrittenHtml = rewriteHtmlForStaticDeploy(rawHtml, { websiteUrl, targetPath });
+        writeStaticPage(exportRoot, pagePath, rewrittenHtml);
+    }
+
+    copyDirectoryIfExists(path.join(kirbyRoot, 'assets'), path.join(exportRoot, 'assets'));
+    copyDirectoryIfExists(path.join(kirbyRoot, 'media'), path.join(exportRoot, 'media'));
+    removePathIfExists(path.join(exportRoot, 'media', 'panel'));
+
+    return {
+        sourceFolder: exportRoot,
+        pageCount: pagePaths.length,
+        cleanup: () => {
+            fs.rmSync(tempRoot, { recursive: true, force: true });
+        }
+    };
+};
+
 const hashPathTree = (rootDir, currentDir, hash) => {
     const entries = fs
         .readdirSync(currentDir, { withFileTypes: true })
@@ -655,43 +870,20 @@ const computeProjectSignature = () => {
     return hash.digest('hex');
 };
 
-// The intelligent Kirby Proxy
-// Rewrite HEAD to GET to prevent the PHP 8 Built-in Server from crashing (500 Error Framebusting bug)
-// State to keep track of the running PHP server
-let phpServerProcess = null;
-
 // ENDPOINT: START PHP SERVER (Kirby CMS)
-app.post('/api/start-kirby', (req, res) => {
+app.post('/api/start-kirby', async (req, res) => {
     const kirbyPath = path.join(__dirname, 'kirby-cms');
 
     if (!fs.existsSync(kirbyPath)) {
         return res.status(404).json({ error: 'Der Ordner "kirby-cms" wurde nicht gefunden.' });
     }
 
-    // Fast-boot logic: We always try to start the detached server, ignoring state false positives
-
-    console.log(`Starte Kirby PHP Server im Ordner: ${kirbyPath}...`);
-
-    // Kill any hanging PHP processes on port 8000 first (macOS specific)
-    // Ignore errors because lsof returns 1 if no process is found
-    exec('lsof -t -i:8000 | xargs kill -9', (err) => {
-        // Start PHP server on port 8000
-        // Using absolute Homebrew path since Node.js on macOS sometimes doesn't inherit the bash $PATH correctly
-        const routerPath = path.join(kirbyPath, 'kirby', 'router.php');
-        phpServerProcess = spawn('/opt/homebrew/bin/php', ['-S', '127.0.0.1:8000', routerPath], {
-            cwd: kirbyPath,
-            stdio: 'inherit', // Debug mode to see PHP crash errors in the Terminal
-        });
-
-        phpServerProcess.on('error', (err) => {
-            console.error('Fehler beim Starten des PHP Servers:', err);
-        });
-    });
-
-    // Short delay to allow server to boot
-    setTimeout(() => {
+    try {
+        await startKirbyPhpServer(kirbyPath);
         res.json({ success: true, message: 'Kirby Server erfolgreich auf Port 8000 gestartet.' });
-    }, 1000);
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message || 'Kirby Server konnte nicht gestartet werden' });
+    }
 });
 
 // ENDPOINT: PROJECT SIGNATURE (detect editor-side content changes for publish state)
@@ -717,20 +909,21 @@ app.post('/api/deploy', async (req, res) => {
         websiteUrl = '',
         deployMode = 'auto'
     } = req.body ?? {};
-
-    const sourceFolder = path.join(__dirname, 'kirby-cms');
+    const kirbyRoot = path.join(__dirname, 'kirby-cms');
 
     if (!host || !user || !password) {
         return res.status(400).json({ error: 'Fehlende FTP Credentials' });
     }
 
-    if (!fs.existsSync(sourceFolder)) {
-        return res.status(404).json({ error: 'Zu exportierender Kirby Ordner fehlt!' });
+    if (!fs.existsSync(kirbyRoot)) {
+        return res.status(404).json({ error: 'Kirby Projektordner fehlt!' });
     }
 
     const parsedPort = parseInt(port, 10);
     let normalizedTargetPath = '/';
     let normalizedWebsiteUrl = '';
+    let sourceFolder = '';
+    let cleanupStaticExport = () => {};
 
     try {
         normalizedTargetPath = normalizeTargetPath(targetPath);
@@ -740,6 +933,15 @@ app.post('/api/deploy', async (req, res) => {
     }
 
     try {
+        const staticExport = await buildStaticDeploySource({
+            kirbyRoot,
+            websiteUrl: normalizedWebsiteUrl,
+            targetPath: normalizedTargetPath
+        });
+        sourceFolder = staticExport.sourceFolder;
+        cleanupStaticExport = staticExport.cleanup;
+
+        console.log(`Static Export erstellt (${staticExport.pageCount} Seiten): ${sourceFolder}`);
         console.log(`Starte Deployment zu ${host} auf Port ${parsedPort} (Zielpfad: ${normalizedTargetPath})...`);
 
         if (parsedPort === 22) {
@@ -855,6 +1057,12 @@ app.post('/api/deploy', async (req, res) => {
     } catch (err) {
         console.error("Deployment Fehler:", err);
         res.status(500).json({ error: err.message, log: err.toString() });
+    } finally {
+        try {
+            cleanupStaticExport();
+        } catch {
+            // ignore cleanup errors
+        }
     }
 });
 
