@@ -119,7 +119,8 @@ h6 {
     position: fixed;
     top: 0;
     width: 100%;
-    background-color: rgba(252, 252, 252, 0.9);
+    background-color: var(--color-bg);
+    border-bottom: 1px solid var(--color-accent);
     backdrop-filter: blur(10px);
     z-index: 1000;
 }
@@ -268,7 +269,7 @@ h6 {
 .explore-link {
     font-size: 0.9rem;
     font-weight: 700;
-    color: #fff;
+    color: var(--color-bg);
     background-color: var(--color-accent);
     padding: 0.6rem 2rem;
     border-radius: 50px;
@@ -286,7 +287,7 @@ h6 {
    ========================================================================== */
 .site-footer {
     padding: var(--spacing-md) 5%;
-    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    border-top: 1px solid var(--color-accent);
     font-size: 0.9rem;
     color: var(--color-text-light);
 }
@@ -329,9 +330,9 @@ h6 {
 .blocks-container p a, 
 .album-text a, 
 .album-description a {
-    color: var(--color-text);
+    color: var(--color-accent);
     text-decoration: none;
-    border-bottom: 1px solid rgba(0,0,0,0.3);
+    border-bottom: 1px solid var(--color-accent);
     transition: all 0.2s ease;
     padding-bottom: 1px;
 }
@@ -340,7 +341,7 @@ h6 {
 .blocks-container p a:hover, 
 .album-text a:hover, 
 .album-description a:hover {
-    color: #000;
-    border-bottom-color: #000;
-    background-color: rgba(0,0,0,0.03);
+    color: var(--color-accent);
+    border-bottom-color: var(--color-accent);
+    opacity: 0.85;
 }

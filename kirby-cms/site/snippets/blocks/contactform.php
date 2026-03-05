@@ -92,7 +92,7 @@ Anfrage</option>
 </div>
 <div>
     <input type="submit" name="submit" value="<?= $block->buttonText()->or('Nachricht Senden') ?>"
-        style="padding: 1rem 2rem; background: #000; color: #fff; border: none; border-radius: 30px; text-transform: uppercase; font-size: 0.9rem; cursor: pointer;">
+        style="padding: 1rem 2rem; background: var(--color-accent); color: var(--color-bg); border: none; border-radius: 30px; text-transform: uppercase; font-size: 0.9rem; cursor: pointer;">
 </div>
 </form>
 <?php endif ?>

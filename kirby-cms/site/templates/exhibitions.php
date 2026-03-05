@@ -36,11 +36,11 @@
         $tSize = (string)$album->titleSize()->or('2rem');
     ?>
     <section class="album-section" style="margin-top: 6rem;">
-        <div class="album-header fade-in" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 2.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid rgba(0,0,0,0.05); text-align: <?= $tAlign ?>; align-items: <?= $tAlign === 'center' ? 'center' : ($tAlign === 'right' ? 'flex-end' : 'flex-start') ?>;">
+        <div class="album-header fade-in" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 2.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--color-accent); text-align: <?= $tAlign ?>; align-items: <?= $tAlign === 'center' ? 'center' : ($tAlign === 'right' ? 'flex-end' : 'flex-start') ?>;">
             <div style="display: flex; flex-direction: <?= $tAlign === 'center' ? 'column' : 'row' ?>; justify-content: <?= $tAlign === 'right' ? 'flex-end' : 'flex-start' ?>; align-items: <?= $tAlign === 'center' ? 'center' : 'baseline' ?>; flex-wrap: wrap; gap: 1rem; width: 100%;">
                 <h2 style="text-transform: uppercase; font-family: var(--font-heading); font-size: <?= $tSize ?>; letter-spacing: 1px; margin: 0; line-height: 1.2;"><?= $album->title() ?></h2>
                 <?php if ($album->orderLink()->isNotEmpty()): ?>
-                <a href="<?= $album->orderLink() ?>" target="_blank" class="order-btn" style="text-decoration:none; background: #000; color:#fff; padding: 10px 20px; border-radius: 30px; font-size: 0.8rem; text-transform: uppercase; transition: opacity 0.3s; white-space: nowrap; margin-top: <?= $tAlign === 'center' ? '0.5rem' : '0' ?>;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">Jetzt bestellen</a>
+                <a href="<?= $album->orderLink() ?>" target="_blank" class="order-btn" style="text-decoration:none; background: var(--color-accent); color: var(--color-bg); padding: 10px 20px; border-radius: 30px; font-size: 0.8rem; text-transform: uppercase; transition: opacity 0.3s; white-space: nowrap; margin-top: <?= $tAlign === 'center' ? '0.5rem' : '0' ?>;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">Jetzt bestellen</a>
                 <?php endif ?>
             </div>
             

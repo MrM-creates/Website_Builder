@@ -1100,13 +1100,6 @@ function App() {
         {/* ====== STEP: EDITOR / DASHBOARD ====== */}
         {step === 'editor' && (
           <div className="fade-in" style={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <div style={{
-              padding: '1rem 2rem',
-              background: 'var(--surface-color)',
-              borderBottom: '1px solid var(--border-color)'
-            }}>
-              <h2 style={{ fontSize: '1.1rem', margin: 0, color: 'var(--text-primary)' }}>Seiten anpassen</h2>
-            </div>
             {/* Dashboard Toolbar */}
             <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',

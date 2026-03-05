@@ -62,7 +62,7 @@
     box-shadow: 0 10px 30px rgba(0,0,0,0.05);
 }
 .blocks-container a {
-    color: #000;
+    color: var(--color-accent);
     text-decoration: underline;
 }
 </style>

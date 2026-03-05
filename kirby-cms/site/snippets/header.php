@@ -21,9 +21,9 @@
     main p a,
     main li a,
     .album-description a {
-        color: inherit !important;
+        color: var(--color-accent) !important;
         text-decoration: none !important;
-        border-bottom: 2px solid rgba(0,0,0,0.8) !important;
+        border-bottom: 2px solid var(--color-accent) !important;
         transition: all 0.3s ease !important;
         padding-bottom: 2px !important;
         display: inline-block !important;
@@ -31,8 +31,8 @@
     main p a:hover,
     main li a:hover,
     .album-description a:hover {
-        background-color: rgba(0,0,0,0.05) !important;
-        border-bottom-color: #000 !important;
+        border-bottom-color: var(--color-accent) !important;
+        opacity: 0.85 !important;
         transform: translateY(-1px) !important;
     }
     </style>
@@ -40,7 +40,7 @@
 <body>
     <header class="site-header">
         <div class="logo">
-            <a href="<?= $site->url() ?>" style="display: block; text-align: center; line-height: 1.1; text-decoration: none; color: var(--color-text);">
+            <a href="<?= $site->url() ?>" style="display: block; text-align: center; line-height: 1.1; text-decoration: none; color: var(--color-accent);">
                 <?= html($site->title()) ?>
             </a>
         </div>
