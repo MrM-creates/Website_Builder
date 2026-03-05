@@ -4,12 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= $site->title() ?> — <?= $page->title() ?></title>
-    <meta name="description" content="<?= $page->seodesc()->or($site->seodesc())->or('Fotografie von Mr M Imagines')->html() ?>">
+    <meta name="description" content="<?= $page->seodesc()->or($site->seodesc())->or('Website von ' . $site->title())->html() ?>">
     <meta property="og:title" content="<?= $site->title() ?> — <?= $page->title() ?>">
-    <meta property="og:description" content="<?= $page->seodesc()->or($site->seodesc())->or('Fotografie von Mr M Imagines')->html() ?>">
+    <meta property="og:description" content="<?= $page->seodesc()->or($site->seodesc())->or('Website von ' . $site->title())->html() ?>">
     <meta property="og:url" content="<?= $page->url() ?>">
     <link rel="canonical" href="<?= $page->url() ?>">
     <?= css("assets/style.css") ?>
+    <?= css("assets/css/custom.css") ?>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -39,9 +40,8 @@
 <body>
     <header class="site-header">
         <div class="logo">
-            <a href="<?= $site->url() ?>" style="display: flex; flex-direction: column; align-items: center; text-align: center; line-height: 1.1; text-decoration: none;">
-                <span style="font-family: 'Playfair Display', serif; font-weight: 700; font-size: 2.8rem; letter-spacing: -0.02em; color: var(--color-text);">Mr M</span>
-                <span style="font-family: 'Space Mono', monospace; font-weight: 400; font-size: 0.9rem; letter-spacing: 0.25em; text-transform: uppercase; color: var(--color-text-light);">IMAGINES</span>
+            <a href="<?= $site->url() ?>" style="display: block; text-align: center; line-height: 1.1; text-decoration: none; color: var(--color-text);">
+                <?= html($site->title()) ?>
             </a>
         </div>
         <nav class="main-navigation">

@@ -3,4 +3,8 @@
   --color-background: #fafafa;
   --color-text: #222;
   --font-family: "Inter", sans-serif;
+  --color-bg: var(--color-background);
+  --color-accent: var(--color-primary);
+  --font-primary: var(--font-family);
+  --font-heading: var(--font-family);
 }

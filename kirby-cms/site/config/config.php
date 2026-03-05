@@ -19,6 +19,22 @@ return [
     ],
     'routes' => [
         [
+            'pattern' => '/',
+            'method' => 'GET',
+            'action' => function () {
+                $first = site()->children()->listed()->first();
+                if ($first) {
+                    return new Kirby\Http\Response(
+                        body: '',
+                        type: 'text/plain',
+                        code: 302,
+                        headers: ['Location' => '/' . $first->id()]
+                    );
+                }
+                return site()->visit('error');
+            }
+        ],
+        [
             'pattern' => '(:all)',
             'method' => 'HEAD',
             'action' => function () {

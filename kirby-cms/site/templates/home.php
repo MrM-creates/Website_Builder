@@ -1,7 +1,9 @@
 <?php snippet("header") ?>
 
 <main class="site-content fade-in" style="max-width: 1200px; margin: 4rem auto; padding: 0 5%;">
-    <?php foreach ($page->layout()->toLayouts() as $layout): ?>
+    <?php $layouts = $page->layout()->toLayouts(); ?>
+    <?php if ($layouts->count() > 0): ?>
+    <?php foreach ($layouts as $layout): ?>
     <?php 
         $align = "start";
         if ($layout->attrs()->alignment()->isNotEmpty()) {
@@ -18,6 +20,12 @@
         <?php endforeach ?>
     </section>
     <?php endforeach ?>
+    <?php else: ?>
+    <div style="text-align: center; margin-bottom: 4rem;">
+        <h1 style="font-family: 'Playfair Display', serif; font-size: 3rem; text-transform: uppercase;"><?= $page->title() ?></h1>
+        <div style="color: var(--color-text-light); margin-top: 1rem;"><?= $page->text()->kt() ?></div>
+    </div>
+    <?php endif ?>
 </main>
 
 <style>

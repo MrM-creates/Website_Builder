@@ -1,5 +1,20 @@
 # React + Vite
 
+## Dev-Server stabil starten
+
+Nutze fuer den lokalen Betrieb diese Befehle:
+
+- `npm run dev:bg` startet Backend (3001), Frontend (5173) und Kirby (8000) im Hintergrund
+- `npm run dev:bg:status` zeigt Live-Status und HTTP-Checks
+- `npm run dev:bg:doctor` zeigt Diagnose + Recovery-Hinweise
+- `npm run dev:bg:logs` zeigt die letzten Logs
+- `npm run dev:bg:stop` stoppt alle drei Dienste sauber
+
+Wenn `localhost:5173` nicht erreichbar ist:
+
+1. `npm run dev:bg:stop`
+2. `npm run dev:bg`
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

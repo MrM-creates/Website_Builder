@@ -1,8 +1,9 @@
 <?php snippet('header') ?>
 
 <main class="site-content fade-in" style="max-width: 1200px; margin: 4rem auto; padding: 0 5%;">
-    <?php if ($page->layout()->isNotEmpty()): ?>
-        <?php foreach ($page->layout()->toLayouts() as $layout): ?>
+    <?php $layouts = $page->layout()->toLayouts(); ?>
+    <?php if ($layouts->count() > 0): ?>
+        <?php foreach ($layouts as $layout): ?>
         <?php 
             $align = "start";
             if ($layout->attrs()->alignment()->isNotEmpty()) {

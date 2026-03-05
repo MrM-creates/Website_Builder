@@ -188,6 +188,72 @@ const updateSiteTitleInContent = (contentDir, title) => {
     }
 };
 
+const normalizeSingleLineFieldValue = (value = '') =>
+    String(value ?? '')
+        .replace(/\r?\n+/g, ' ')
+        .trim();
+
+const parseSingleLineKirbyFields = (content = '') => {
+    const fields = {};
+    const lines = String(content ?? '').split(/\r?\n/);
+
+    for (const line of lines) {
+        const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+        if (!match) continue;
+        const key = match[1];
+        const value = normalizeSingleLineFieldValue(match[2] ?? '');
+        fields[key] = value;
+    }
+
+    return fields;
+};
+
+const stringifyKirbyFields = (orderedEntries = []) => {
+    const normalizedEntries = orderedEntries
+        .filter(([key]) => Boolean(String(key || '').trim()))
+        .map(([key, value]) => [String(key).trim(), normalizeSingleLineFieldValue(value)]);
+
+    if (!normalizedEntries.length) return '';
+
+    return `${normalizedEntries.map(([key, value]) => `${key}: ${value}`).join('\n\n----\n\n')}\n`;
+};
+
+const updateSiteMetaInContent = (
+    contentDir,
+    { title = '', footerLine1 = '', footerLine2 = '', footerLine3 = '' } = {}
+) => {
+    const siteFile = path.join(contentDir, 'site.txt');
+    const safeTitle = (title || '').trim() || 'Meine Website';
+
+    if (!fs.existsSync(contentDir)) {
+        fs.mkdirSync(contentDir, { recursive: true });
+    }
+
+    let current = '';
+    if (fs.existsSync(siteFile)) {
+        current = fs.readFileSync(siteFile, 'utf-8');
+    }
+
+    const existingFields = parseSingleLineKirbyFields(current);
+    const currentTitle = normalizeSingleLineFieldValue(existingFields.Title || '');
+    const resolvedTitle = (title || '').trim() || currentTitle || safeTitle;
+
+    const merged = {
+        ...existingFields,
+        Title: resolvedTitle,
+        Footerline1: normalizeSingleLineFieldValue(footerLine1),
+        Footerline2: normalizeSingleLineFieldValue(footerLine2),
+        Footerline3: normalizeSingleLineFieldValue(footerLine3)
+    };
+
+    const orderedKeys = ['Title', 'Footerline1', 'Footerline2', 'Footerline3'];
+    const restKeys = Object.keys(merged).filter((key) => !orderedKeys.includes(key)).sort();
+    const allKeys = [...orderedKeys, ...restKeys];
+
+    const updated = stringifyKirbyFields(allKeys.map((key) => [key, merged[key]]));
+    fs.writeFileSync(siteFile, updated, 'utf-8');
+};
+
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const findExistingPageDirName = (contentRoot, slug) => {
@@ -232,6 +298,23 @@ const sanitizeSlug = (value = '') =>
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '');
 
+const normalizeOnboardingPages = (rawPages = []) => {
+    const normalizedPages = [];
+    const seen = new Set();
+
+    for (const raw of rawPages) {
+        const slug = sanitizeSlug(raw?.slug);
+        const title = String(raw?.title || '').trim();
+        if (!slug || slug === 'home') continue;
+        if (!title) continue;
+        if (seen.has(slug)) continue;
+        seen.add(slug);
+        normalizedPages.push({ slug, title });
+    }
+
+    return normalizedPages;
+};
+
 const listContentDirectories = (contentRoot) => {
     if (!fs.existsSync(contentRoot)) return [];
     return fs.readdirSync(contentRoot).filter((entry) => {
@@ -274,18 +357,7 @@ const syncPagesInContent = (contentRoot, rawPages = []) => {
         fs.mkdirSync(contentRoot, { recursive: true });
     }
 
-    const normalizedPages = [];
-    const seen = new Set();
-
-    for (const raw of rawPages) {
-        const slug = sanitizeSlug(raw?.slug);
-        const title = String(raw?.title || '').trim();
-        if (!slug || slug === 'home') continue;
-        if (!title) continue;
-        if (seen.has(slug)) continue;
-        seen.add(slug);
-        normalizedPages.push({ slug, title });
-    }
+    const normalizedPages = normalizeOnboardingPages(rawPages);
 
     const dirs = listContentDirectories(contentRoot);
     const usedDirs = new Set();
@@ -359,6 +431,47 @@ const syncPagesInContent = (contentRoot, rawPages = []) => {
     return {
         synced: selected.map((p) => ({ slug: p.slug, title: p.title, dir: p.desiredDir })),
         total: selected.length
+    };
+};
+
+const hardResetPagesInContent = (contentRoot, rawPages = []) => {
+    if (!fs.existsSync(contentRoot)) {
+        fs.mkdirSync(contentRoot, { recursive: true });
+    }
+
+    let normalizedPages = normalizeOnboardingPages(rawPages);
+    if (normalizedPages.length === 0) {
+        normalizedPages = [{ slug: 'portfolio', title: 'Portfolio' }];
+    }
+
+    const entries = fs.readdirSync(contentRoot, { withFileTypes: true });
+    for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue;
+        const absolute = path.join(contentRoot, entry.name);
+
+        if (entry.isDirectory()) {
+            if (entry.name === 'error') continue;
+            fs.rmSync(absolute, { recursive: true, force: true });
+            continue;
+        }
+
+        if (entry.isFile()) {
+            if (entry.name === 'site.txt') continue;
+            fs.rmSync(absolute, { force: true });
+        }
+    }
+
+    const synced = [];
+    normalizedPages.forEach((page, index) => {
+        const dirName = `${index + 1}_${page.slug}`;
+        const contentDir = path.join(contentRoot, dirName);
+        upsertPageContentFile(contentDir, page.title);
+        synced.push({ slug: page.slug, title: page.title, dir: dirName });
+    });
+
+    return {
+        synced,
+        total: synced.length
     };
 };
 
@@ -735,6 +848,15 @@ const copyDirectoryIfExists = (sourceDir, targetDir) => {
     fs.cpSync(sourceDir, targetDir, { recursive: true });
 };
 
+const writeUtf8Htaccess = (exportRoot) => {
+    const content = `AddDefaultCharset UTF-8
+<IfModule mod_mime.c>
+  AddCharset UTF-8 .html .css .js .json .xml .txt
+</IfModule>
+`;
+    fs.writeFileSync(path.join(exportRoot, '.htaccess'), content, 'utf-8');
+};
+
 const removePathIfExists = (targetPath) => {
     if (!targetPath) return;
     if (fs.existsSync(targetPath)) {
@@ -818,6 +940,7 @@ const buildStaticDeploySource = async ({ kirbyRoot, websiteUrl, targetPath }) =>
     copyDirectoryIfExists(path.join(kirbyRoot, 'assets'), path.join(exportRoot, 'assets'));
     copyDirectoryIfExists(path.join(kirbyRoot, 'media'), path.join(exportRoot, 'media'));
     removePathIfExists(path.join(exportRoot, 'media', 'panel'));
+    writeUtf8Htaccess(exportRoot);
 
     return {
         sourceFolder: exportRoot,
@@ -907,7 +1030,11 @@ app.post('/api/deploy', async (req, res) => {
         port = 21,
         targetPath = '/',
         websiteUrl = '',
-        deployMode = 'auto'
+        deployMode = 'auto',
+        siteTitle = '',
+        footerLine1 = '',
+        footerLine2 = '',
+        footerLine3 = ''
     } = req.body ?? {};
     const kirbyRoot = path.join(__dirname, 'kirby-cms');
 
@@ -933,6 +1060,13 @@ app.post('/api/deploy', async (req, res) => {
     }
 
     try {
+        updateSiteMetaInContent(path.join(kirbyRoot, 'content'), {
+            title: siteTitle,
+            footerLine1,
+            footerLine2,
+            footerLine3
+        });
+
         const staticExport = await buildStaticDeploySource({
             kirbyRoot,
             websiteUrl: normalizedWebsiteUrl,
@@ -1078,6 +1212,10 @@ app.post('/api/update-theme', (req, res) => {
   --color-background: ${colorBg || '#fff'};
   --color-text: ${colorText || '#000'};
   --font-family: ${font || 'sans-serif'};
+  --color-bg: var(--color-background);
+  --color-accent: var(--color-primary);
+  --font-primary: var(--font-family);
+  --font-heading: var(--font-family);
 }`;
 
     try {
@@ -1106,6 +1244,20 @@ app.post('/api/update-site-title', (req, res) => {
     } catch (err) {
         console.error('Fehler beim Aktualisieren des Site-Titels:', err);
         res.status(500).json({ error: 'Fehler beim Speichern des Site-Titels' });
+    }
+});
+
+// ENDPOINT: UPDATE SITE META (title + footer fields from Flatsite UI)
+app.post('/api/update-site-meta', (req, res) => {
+    const { title, footerLine1 = '', footerLine2 = '', footerLine3 = '' } = req.body ?? {};
+    const contentDir = path.join(__dirname, 'kirby-cms', 'content');
+
+    try {
+        updateSiteMetaInContent(contentDir, { title, footerLine1, footerLine2, footerLine3 });
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Fehler beim Aktualisieren der Site-Metadaten:', err);
+        res.status(500).json({ error: 'Fehler beim Speichern der Site-Metadaten' });
     }
 });
 
@@ -1180,6 +1332,20 @@ app.post('/api/sync-pages', express.json(), (req, res) => {
     } catch (err) {
         console.error('Fehler beim Synchronisieren der Seiten:', err);
         res.status(500).json({ error: 'Seiten konnten nicht synchronisiert werden' });
+    }
+});
+
+// ENDPOINT: HARD RESET PAGES FOR "NEW PROJECT"
+app.post('/api/reset-pages', express.json(), (req, res) => {
+    const pages = Array.isArray(req.body?.pages) ? req.body.pages : [];
+    const contentRoot = path.join(__dirname, 'kirby-cms', 'content');
+
+    try {
+        const result = hardResetPagesInContent(contentRoot, pages);
+        res.json({ success: true, ...result });
+    } catch (err) {
+        console.error('Fehler beim Zuruecksetzen der Seiten:', err);
+        res.status(500).json({ error: 'Seiten konnten nicht zurueckgesetzt werden' });
     }
 });
 

@@ -105,10 +105,9 @@ const ensureTrailingSlashForDirectory = (url = '') => {
 };
 
 const DEFAULT_PAGES = [
-  { id: 'home', title: 'Startseite', required: true, selected: true },
-  { id: 'portfolio', title: 'Portfolio', required: false, selected: true },
-  { id: 'about', title: 'Über mich', required: false, selected: true },
-  { id: 'contact', title: 'Kontakt', required: false, selected: true },
+  { id: 'portfolio', title: 'Portfolio', selected: true },
+  { id: 'about', title: 'Über mich', selected: true },
+  { id: 'contact', title: 'Kontakt', selected: true },
 ];
 
 const TEST_HOSTING_DEFAULTS = {
@@ -283,7 +282,7 @@ function App() {
 
   useEffect(() => {
     if (step === 'editor') {
-      setPanelSrc('/panel/site');
+      setPanelSrc(`/panel/site?ts=${Date.now()}`);
     }
   }, [step]);
 
@@ -360,6 +359,71 @@ function App() {
     setPanelSrc(`/panel/site?from=flatsite&ts=${Date.now()}`);
   };
 
+  const startNewProject = async () => {
+    setProjectName('');
+    setPages(DEFAULT_PAGES.map((p) => ({ ...p })));
+    setNewPageName('');
+    setEditingPageId(null);
+    setEditingPageTitle('');
+    setDragIndex(null);
+    setDragOverIndex(null);
+    setSelectedDesign('minimalist');
+    setSelectedColor(0);
+    setFooterLine1('');
+    setFooterLine2('');
+    setFooterLine3('');
+    setSetupDone(false);
+    setKirbyReady(false);
+    setIsLive(false);
+    setLastPublishedViewUrl('');
+    setProjectSignature('');
+    setLastPublishedSignature(null);
+    setExportResult('');
+    setShowExportModal(false);
+    setPanelSrc('/panel/site');
+
+    try {
+      await fetch(`${BACKEND_URL}/api/update-site-meta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Meine Website',
+          footerLine1: '',
+          footerLine2: '',
+          footerLine3: '',
+        }),
+      });
+
+      await fetch(`${BACKEND_URL}/api/reset-pages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pages: DEFAULT_PAGES
+            .filter((p) => p.selected)
+            .map((p) => ({ slug: p.id, title: p.title })),
+        }),
+      });
+
+      const defaultDesignKey = 'minimalist';
+      const defaultColor = getColor(defaultDesignKey, 0);
+      await fetch(`${BACKEND_URL}/api/update-theme`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          design: defaultDesignKey,
+          font: THEMES[defaultDesignKey].font,
+          colorPrimary: defaultColor.accent,
+          colorBg: defaultColor.bg,
+          colorText: defaultColor.text,
+        }),
+      });
+    } catch (err) {
+      console.error('Neues-Projekt-Reset fehlgeschlagen:', err);
+    }
+
+    setStep('config');
+  };
+
   const buildWebsiteViewUrl = (urlInput = websiteUrl, targetPathInput = targetPath) => {
     const base = normalizeWebsiteUrlInput(urlInput);
     if (!base) return '';
@@ -431,7 +495,7 @@ function App() {
   const buildPublishSignature = (urlValue = websiteUrl, signatureValue = projectSignature) =>
     JSON.stringify({
       projectName: projectName.trim(),
-      pages: pages.map((p) => ({ id: p.id, title: p.title, required: p.required, selected: p.selected })),
+      pages: pages.map((p) => ({ id: p.id, title: p.title, selected: p.selected })),
       design: { selectedDesign, selectedColor },
       contentSignature: signatureValue || '',
       footer: {
@@ -456,45 +520,67 @@ function App() {
   const isExportError =
     exportResult.startsWith('Fehler') || exportResult.startsWith('Verbindung');
 
-  /* ---- Hosting Setup (invisible Kirby account) ---- */
-  const handleHostingComplete = async () => {
-    setIsSettingUp(true);
-    try {
-      // Create Kirby account in the background
+  const syncProjectStateToKirby = async ({ includeAccount = false } = {}) => {
+    if (includeAccount) {
       await fetch(`${BACKEND_URL}/api/ensure-account`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: 'admin@flatsite.app', password: 'flatsite2026' }),
       });
-      // Sync project name to Kirby site title for Panel overview/header
-      await fetch(`${BACKEND_URL}/api/update-site-title`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: projectName }),
-      });
-      // Sync pages in Kirby filesystem so panel overview matches onboarding exactly
-      await fetch(`${BACKEND_URL}/api/sync-pages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pages: pages
-            .filter((p) => p.selected && p.id !== 'home')
-            .map((p) => ({ slug: p.id, title: p.title }))
-        }),
-      });
-      // Apply theme
-      const color = getColor(selectedDesign, selectedColor);
-      await fetch(`${BACKEND_URL}/api/update-theme`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          design: selectedDesign,
-          font: THEMES[selectedDesign].font,
-          colorPrimary: color.accent,
-          colorBg: color.bg,
-          colorText: color.text,
-        }),
-      });
+    }
+
+    await fetch(`${BACKEND_URL}/api/update-site-meta`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: projectName,
+        footerLine1,
+        footerLine2,
+        footerLine3,
+      }),
+    });
+
+    await fetch(`${BACKEND_URL}/api/sync-pages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pages: pages
+          .filter((p) => p.selected)
+          .map((p) => ({ slug: p.id, title: p.title }))
+      }),
+    });
+
+    const color = getColor(selectedDesign, selectedColor);
+    await fetch(`${BACKEND_URL}/api/update-theme`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        design: selectedDesign,
+        font: THEMES[selectedDesign].font,
+        colorPrimary: color.accent,
+        colorBg: color.bg,
+        colorText: color.text,
+      }),
+    });
+  };
+
+  const goToEditorWithSync = async () => {
+    setIsSettingUp(true);
+    try {
+      await syncProjectStateToKirby();
+    } catch (err) {
+      console.error('Sync vor Editor fehlgeschlagen:', err);
+    } finally {
+      setIsSettingUp(false);
+    }
+    setStep('editor');
+  };
+
+  /* ---- Hosting Setup (invisible Kirby account) ---- */
+  const handleHostingComplete = async () => {
+    setIsSettingUp(true);
+    try {
+      await syncProjectStateToKirby({ includeAccount: true });
     } catch (err) {
       console.error('Setup error:', err);
     }
@@ -516,6 +602,30 @@ function App() {
     }
     let timeout = null;
     try {
+      const color = getColor(selectedDesign, selectedColor);
+      await fetch(`${BACKEND_URL}/api/update-theme`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          design: selectedDesign,
+          font: THEMES[selectedDesign].font,
+          colorPrimary: color.accent,
+          colorBg: color.bg,
+          colorText: color.text,
+        }),
+      });
+
+      await fetch(`${BACKEND_URL}/api/update-site-meta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: projectName,
+          footerLine1,
+          footerLine2,
+          footerLine3,
+        }),
+      });
+
       const controller = new AbortController();
       timeout = setTimeout(() => controller.abort(), 120000);
       const res = await fetch(`${BACKEND_URL}/api/deploy`, {
@@ -530,6 +640,10 @@ function App() {
           websiteUrl: normalizedWebsiteUrl,
           targetPath,
           deployMode: 'auto',
+          siteTitle: projectName,
+          footerLine1,
+          footerLine2,
+          footerLine3,
         }),
       });
       const data = await res.json();
@@ -566,13 +680,20 @@ function App() {
     e.preventDefault();
     if (newPageName.trim()) {
       const slug = newPageName.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-      setPages([...pages, { id: slug || `page-${Date.now()}`, title: newPageName.trim(), required: false, selected: true }]);
+      setPages([...pages, { id: slug || `page-${Date.now()}`, title: newPageName.trim(), selected: true }]);
       setNewPageName('');
     }
   };
 
   const togglePage = (id) => {
-    setPages(pages.map(p => p.id === id && !p.required ? { ...p, selected: !p.selected } : p));
+    const selectedCount = pages.filter((p) => p.selected).length;
+    setPages(
+      pages.map((p) => {
+        if (p.id !== id) return p;
+        if (p.selected && selectedCount <= 1) return p;
+        return { ...p, selected: !p.selected };
+      })
+    );
   };
 
   const removePage = (id) => {
@@ -613,7 +734,7 @@ function App() {
 
   /* ---- Navigation ---- */
   const navItems = [
-    { label: 'Start', state: 'config' },
+    { label: 'Start', state: 'welcome' },
     { label: 'Seiten', state: 'pages' },
     { label: 'Design', state: 'design' },
     { label: 'Hosting', state: 'account' },
@@ -660,7 +781,13 @@ function App() {
             {navItems.map((nav) => {
               const isActive = step === nav.state || (nav.label === 'Übersicht' && step === 'provider');
               return (
-                <span key={nav.label} onClick={() => setStep(nav.state)} style={{
+                <span key={nav.label} onClick={() => {
+                  if (nav.state === 'editor' && setupDone) {
+                    goToEditorWithSync();
+                    return;
+                  }
+                  setStep(nav.state);
+                }} style={{
                   color: isActive ? 'var(--text-primary)' : 'inherit',
                   fontWeight: isActive ? 600 : 400,
                   cursor: 'pointer', opacity: isActive ? 1 : 0.6, transition: 'opacity 0.2s'
@@ -704,7 +831,7 @@ function App() {
             </p>
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
               <button className="btn-primary fade-in" style={{ padding: '1rem 2rem', fontSize: '1.1rem', minWidth: '220px', boxShadow: '0 8px 20px rgba(79, 172, 254, 0.3)' }}
-                onClick={() => setStep('config')}>
+                onClick={startNewProject}>
                 Neues Projekt
               </button>
               <button className="btn-outline fade-in" style={{ padding: '1rem 2rem', fontSize: '1.1rem', minWidth: '220px', background: 'rgba(255,255,255,0.05)' }}
@@ -744,7 +871,7 @@ function App() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginBottom: '2rem' }}>
               {pages.map((page, index) => (
                 <div key={page.id}
-                  draggable={!page.required}
+                  draggable
                   onDragStart={() => handleDragStart(index)}
                   onDragOver={(e) => handleDragOver(e, index)}
                   onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); }}
@@ -753,20 +880,18 @@ function App() {
                     display: 'flex', alignItems: 'center', gap: '0.8rem', padding: '0.8rem 1rem',
                     background: dragOverIndex === index ? 'rgba(79,172,254,0.15)' : page.selected ? 'rgba(79, 172, 254, 0.08)' : 'var(--surface-color)',
                     border: dragOverIndex === index ? '1px dashed var(--accent-color)' : page.selected ? '1px solid rgba(79,172,254,0.3)' : '1px solid var(--border-color)',
-                    borderRadius: '8px', cursor: page.required ? 'default' : 'grab',
+                    borderRadius: '8px', cursor: 'grab',
                     opacity: dragIndex === index ? 0.4 : 1, transition: 'all 0.15s'
                   }}>
                   {/* Drag Handle */}
-                  {!page.required && (
-                    <span style={{ color: 'var(--text-secondary)', fontSize: '1rem', cursor: 'grab', userSelect: 'none' }}>⠿</span>
-                  )}
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '1rem', cursor: 'grab', userSelect: 'none' }}>⠿</span>
                   {/* Checkbox */}
                   <div onClick={() => togglePage(page.id)} style={{
                     width: '20px', height: '20px', borderRadius: '4px', flexShrink: 0,
                     background: page.selected ? 'var(--accent-color, #4facfe)' : 'transparent',
                     border: page.selected ? 'none' : '1px solid var(--text-secondary)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    cursor: page.required ? 'default' : 'pointer'
+                    cursor: 'pointer'
                   }}>
                     {page.selected && <span style={{ color: '#000', fontSize: '12px', fontWeight: 'bold' }}>✓</span>}
                   </div>
@@ -779,23 +904,20 @@ function App() {
                       style={{ flex: 1, background: 'var(--surface-color-light)', border: '1px solid var(--border-hover)', color: 'var(--text-primary)', padding: '0.3rem 0.6rem', borderRadius: '4px', fontSize: '0.95rem' }}
                     />
                   ) : (
-                    <span onDoubleClick={() => !page.required && startRename(page)} style={{
+                    <span onDoubleClick={() => startRename(page)} style={{
                       flex: 1, color: page.selected ? 'var(--text-primary)' : 'var(--text-secondary)',
-                      cursor: page.required ? 'default' : 'text'
+                      cursor: 'text'
                     }}>
                       {page.title}
-                      {page.required && <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginLeft: '0.5rem' }}>(Pflicht)</span>}
                     </span>
                   )}
                   {/* Remove Button */}
-                  {!page.required && (
-                    <span onClick={() => removePage(page.id)} style={{
-                      color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.1rem',
-                      opacity: 0.5, transition: 'opacity 0.2s'
-                    }} onMouseOver={e => e.target.style.opacity = 1} onMouseOut={e => e.target.style.opacity = 0.5}>
-                      ✕
-                    </span>
-                  )}
+                  <span onClick={() => removePage(page.id)} style={{
+                    color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.1rem',
+                    opacity: 0.5, transition: 'opacity 0.2s'
+                  }} onMouseOver={e => e.target.style.opacity = 1} onMouseOut={e => e.target.style.opacity = 0.5}>
+                    ✕
+                  </span>
                 </div>
               ))}
             </div>
@@ -812,9 +934,19 @@ function App() {
               Doppelklick auf einen Namen zum Umbenennen · Ziehen zum Sortieren
             </p>
 
-            <button className="btn-primary" style={{ width: '100%', padding: '1rem', marginTop: '2rem' }}
-              onClick={() => setStep('design')}>
-              Weiter zum Design
+            <button
+              className="btn-primary"
+              style={{ width: '100%', padding: '1rem', marginTop: '2rem' }}
+              onClick={() => {
+                if (setupDone) {
+                  goToEditorWithSync();
+                  return;
+                }
+                setStep('design');
+              }}
+              disabled={setupDone && isSettingUp}
+            >
+              {setupDone ? (isSettingUp ? 'Synchronisiere...' : 'Zurück zur Übersicht') : 'Weiter zum Design'}
             </button>
           </div>
         )}
@@ -878,7 +1010,13 @@ function App() {
 
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: '3rem' }}>
               <button className="btn-primary" style={{ padding: '1rem 3rem' }}
-                onClick={() => setStep(setupDone ? 'editor' : 'account')}>
+                onClick={() => {
+                  if (setupDone) {
+                    goToEditorWithSync();
+                    return;
+                  }
+                  setStep('account');
+                }}>
                 {setupDone ? 'Zurück zur Übersicht' : 'Weiter zum Hosting'}
               </button>
             </div>
@@ -1014,14 +1152,14 @@ function App() {
               background: 'var(--surface-color)', borderBottom: '1px solid var(--border-color)'
             }}>
               <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Footer Zeile 1</label>
-                <input type="text" placeholder="z.B. © 2026 Dein Name" value={footerLine1}
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Copyright Name (© + Jahr automatisch)</label>
+                <input type="text" placeholder="z.B. Dein Name" value={footerLine1}
                   onChange={e => setFooterLine1(e.target.value)}
                   style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem' }} />
               </div>
               <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Footer Zeile 2</label>
-                <input type="text" placeholder="z.B. @instagram_handle" value={footerLine2}
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Footer Link (Adresse)</label>
+                <input type="text" placeholder="z.B. instagram.com/deinprofil" value={footerLine2}
                   onChange={e => setFooterLine2(e.target.value)}
                   style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem' }} />
               </div>
