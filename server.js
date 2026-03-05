@@ -960,14 +960,15 @@ const hashPathTree = (rootDir, currentDir, hash) => {
     for (const entry of entries) {
         const absolute = path.join(currentDir, entry.name);
         const relative = path.relative(rootDir, absolute).replace(/\\/g, '/');
-        const stats = fs.statSync(absolute);
-        const mtime = Math.floor(stats.mtimeMs);
 
         if (entry.isDirectory()) {
-            hash.update(`D:${relative}:${mtime};`);
             hashPathTree(rootDir, absolute, hash);
         } else if (entry.isFile()) {
-            hash.update(`F:${relative}:${stats.size}:${mtime};`);
+            // Hash file contents to avoid false positives from directory mtime churn
+            const fileBuffer = fs.readFileSync(absolute);
+            hash.update(`F:${relative}:`);
+            hash.update(fileBuffer);
+            hash.update(';');
         }
     }
 };
@@ -984,8 +985,9 @@ const computeProjectSignature = () => {
     }
 
     if (fs.existsSync(customCssPath)) {
-        const stats = fs.statSync(customCssPath);
-        hash.update(`F:assets/css/custom.css:${stats.size}:${Math.floor(stats.mtimeMs)};`);
+        hash.update('F:assets/css/custom.css:');
+        hash.update(fs.readFileSync(customCssPath));
+        hash.update(';');
     } else {
         hash.update('missing:assets/css/custom.css;');
     }

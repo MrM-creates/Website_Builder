@@ -264,6 +264,7 @@ function App() {
 
   // Refs
   const editInputRef = useRef(null);
+  const lastOnboardingSyncSignatureRef = useRef('');
 
   /* ---- Effects ---- */
   useEffect(() => {
@@ -381,6 +382,7 @@ function App() {
     setExportResult('');
     setShowExportModal(false);
     setPanelSrc('/panel/site');
+    lastOnboardingSyncSignatureRef.current = '';
 
     try {
       await fetch(`${BACKEND_URL}/api/update-site-meta`, {
@@ -519,6 +521,17 @@ function App() {
   const publishButtonDisabled = isExporting || !hasPendingPublishChanges;
   const isExportError =
     exportResult.startsWith('Fehler') || exportResult.startsWith('Verbindung');
+  const buildOnboardingSyncSignature = () =>
+    JSON.stringify({
+      projectName: projectName.trim(),
+      pages: pages.map((p) => ({ id: p.id, title: p.title, selected: p.selected })),
+      design: { selectedDesign, selectedColor },
+      footer: {
+        footerLine1: footerLine1.trim(),
+        footerLine2: footerLine2.trim(),
+        footerLine3: footerLine3.trim(),
+      },
+    });
 
   const syncProjectStateToKirby = async ({ includeAccount = false } = {}) => {
     if (includeAccount) {
@@ -565,9 +578,16 @@ function App() {
   };
 
   const goToEditorWithSync = async () => {
+    const currentSyncSignature = buildOnboardingSyncSignature();
+    if (currentSyncSignature === lastOnboardingSyncSignatureRef.current) {
+      setStep('editor');
+      return;
+    }
+
     setIsSettingUp(true);
     try {
       await syncProjectStateToKirby();
+      lastOnboardingSyncSignatureRef.current = currentSyncSignature;
     } catch (err) {
       console.error('Sync vor Editor fehlgeschlagen:', err);
     } finally {
@@ -581,6 +601,7 @@ function App() {
     setIsSettingUp(true);
     try {
       await syncProjectStateToKirby({ includeAccount: true });
+      lastOnboardingSyncSignatureRef.current = buildOnboardingSyncSignature();
     } catch (err) {
       console.error('Setup error:', err);
     }
@@ -594,9 +615,8 @@ function App() {
     setIsExporting(true);
     setExportResult('');
     const normalizedWebsiteUrl = normalizeWebsiteUrlInput(websiteUrl);
-    const latestProjectSignature = await fetchProjectSignature();
-    const effectiveSignature = latestProjectSignature ?? projectSignature;
-    const signatureAtDeploy = buildPublishSignature(normalizedWebsiteUrl, effectiveSignature);
+    let effectiveSignature = projectSignature;
+    let signatureAtDeploy = buildPublishSignature(normalizedWebsiteUrl, effectiveSignature);
     if (normalizedWebsiteUrl !== websiteUrl) {
       setWebsiteUrl(normalizedWebsiteUrl);
     }
@@ -626,6 +646,10 @@ function App() {
         }),
       });
 
+      const latestProjectSignature = await fetchProjectSignature();
+      effectiveSignature = latestProjectSignature ?? projectSignature;
+      signatureAtDeploy = buildPublishSignature(normalizedWebsiteUrl, effectiveSignature);
+
       const controller = new AbortController();
       timeout = setTimeout(() => controller.abort(), 120000);
       const res = await fetch(`${BACKEND_URL}/api/deploy`, {
@@ -650,14 +674,16 @@ function App() {
       if (data.success) {
         setExportResult('Upload erfolgreich.');
         setIsLive(true);
-        if (latestProjectSignature) {
-          setProjectSignature(latestProjectSignature);
+        const postDeploySignature = await fetchProjectSignature();
+        const finalSignature = postDeploySignature ?? effectiveSignature;
+        if (finalSignature) {
+          setProjectSignature(finalSignature);
         }
         const publishedViewUrl =
           buildWebsiteViewUrlFromTrigger(data.triggerUrl) ||
           buildWebsiteViewUrl(normalizedWebsiteUrl, targetPath);
         setLastPublishedViewUrl(publishedViewUrl);
-        setLastPublishedSignature(signatureAtDeploy);
+        setLastPublishedSignature(buildPublishSignature(normalizedWebsiteUrl, finalSignature));
       } else {
         setExportResult('Fehler: Upload fehlgeschlagen.');
       }
