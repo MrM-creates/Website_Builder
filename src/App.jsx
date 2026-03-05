@@ -119,6 +119,14 @@ const TEST_HOSTING_DEFAULTS = {
   targetPath: '/',
 };
 
+const PROVIDER_GUIDES = [
+  { id: 'hostpoint', name: 'Hostpoint', short: 'HP', url: 'https://support.hostpoint.ch/de/produkte/webhosting/erste-schritte/wie-erstelle-ich-einen-ftp-account' },
+  { id: 'infomaniak', name: 'Infomaniak', short: 'IN', url: 'https://www.infomaniak.com/de/support/faq/1982/ftp-ssh-konten-verwalten' },
+  { id: 'cyon', name: 'Cyon', short: 'CY', url: 'https://www.cyon.ch/support/a/ftp-konto-erstellen' },
+  { id: 'metanet', name: 'Metanet', short: 'ME', url: 'https://support.metanet.ch/45' },
+  { id: 'hoststar', name: 'Hoststar', short: 'HS', url: 'https://www.hoststar.ch/de/support/my-panel/hosting/ftp-verwaltung' },
+];
+
 /* ==========================================================================
    FLATSITE – Mini Website Preview Component
    ========================================================================== */
@@ -264,6 +272,7 @@ function App() {
   const [currentProjectId, setCurrentProjectId] = useState('');
   const [projects, setProjects] = useState([]);
   const [showProjectList, setShowProjectList] = useState(false);
+  const [showProviderGuide, setShowProviderGuide] = useState(false);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [isOpeningProject, setIsOpeningProject] = useState(false);
   const [projectError, setProjectError] = useState('');
@@ -416,7 +425,7 @@ function App() {
       setCurrentProjectId(data.project.id);
       applyProjectState(data.project.state || {});
       setShowProjectList(false);
-      setStep(data.project.state?.setupDone ? 'editor' : 'config');
+      setStep('editor');
       await refreshProjects();
       await fetchProjectSignature();
     } catch {
@@ -1476,6 +1485,14 @@ function App() {
             <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>
               Trage hier die Zugangsdaten deines Anbieters ein. Flatsite kümmert sich um den Rest.
             </p>
+            <button
+              type="button"
+              className="btn-outline"
+              style={{ marginTop: '-1.2rem', marginBottom: '1.2rem', fontSize: '0.82rem', padding: '0.45rem 0.8rem' }}
+              onClick={() => setShowProviderGuide(true)}
+            >
+              Du weißt nicht, wo du diese Daten findest?
+            </button>
 
             <div className="input-group" style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Server-Adresse</label>
@@ -1759,6 +1776,80 @@ function App() {
                 Live schalten
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {showProviderGuide && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.72)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 1300,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem'
+          }}
+          onClick={() => setShowProviderGuide(false)}
+        >
+          <div
+            className="glass-panel fade-in"
+            style={{ maxWidth: '700px', width: '100%', padding: '1.4rem', borderRadius: '12px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Provider-Anleitungen</h3>
+              <button
+                className="btn-outline"
+                style={{ padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
+                onClick={() => setShowProviderGuide(false)}
+              >
+                Schließen
+              </button>
+            </div>
+            <p style={{ margin: '0 0 0.85rem 0', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              Wähle deinen Provider für eine Schritt-für-Schritt-Anleitung. Die Seite öffnet in einem neuen Tab.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '0.6rem' }}>
+              {PROVIDER_GUIDES.map((provider) => (
+                <a
+                  key={provider.id}
+                  href={provider.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-outline"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    padding: '0.6rem 0.75rem',
+                    textDecoration: 'none',
+                    fontSize: '0.82rem'
+                  }}
+                >
+                  <span style={{
+                    display: 'inline-flex',
+                    width: '24px',
+                    height: '24px',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-color)',
+                    background: 'rgba(255,255,255,0.06)',
+                    fontSize: '0.68rem',
+                    fontWeight: 700,
+                    color: 'var(--text-secondary)',
+                    flexShrink: 0
+                  }}>
+                    {provider.short}
+                  </span>
+                  <span style={{ color: 'var(--text-primary)' }}>{provider.name}</span>
+                </a>
+              ))}
+            </div>
           </div>
         </div>
       )}
