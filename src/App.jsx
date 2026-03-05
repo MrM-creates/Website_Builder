@@ -516,7 +516,8 @@ function App() {
     lastPublishedSignature === null || currentPublishSignature !== lastPublishedSignature;
   const publishButtonDisabled = isExporting || !hasPendingPublishChanges;
   const isExportError =
-    exportResult.startsWith('Fehler') || exportResult.startsWith('Verbindung');
+    exportResult.toLowerCase().includes('fehlgeschlagen') ||
+    exportResult.toLowerCase().includes('hoppla');
   const buildOnboardingSyncSignature = () =>
     JSON.stringify({
       projectName: projectName.trim(),
@@ -668,7 +669,7 @@ function App() {
       });
       const data = await res.json();
       if (data.success) {
-        setExportResult('Upload erfolgreich.');
+        setExportResult('Deine Website ist jetzt live!');
         setIsLive(true);
         const postDeploySignature = await fetchProjectSignature();
         const finalSignature = postDeploySignature ?? effectiveSignature;
@@ -681,13 +682,13 @@ function App() {
         setLastPublishedViewUrl(publishedViewUrl);
         setLastPublishedSignature(buildPublishSignature(normalizedWebsiteUrl, finalSignature));
       } else {
-        setExportResult('Fehler: Upload fehlgeschlagen.');
+        setExportResult('Hoppla, der Upload klemmt kurz.');
       }
     } catch (err) {
       if (err?.name === 'AbortError') {
-        setExportResult('Fehler: Upload dauert zu lange (Timeout).');
+        setExportResult('Hoppla, der Upload klemmt kurz.');
       } else {
-        setExportResult('Verbindungsfehler: Upload fehlgeschlagen.');
+        setExportResult('Hoppla, der Upload klemmt kurz.');
       }
     } finally {
       if (timeout) {
@@ -851,17 +852,41 @@ function App() {
             </div>
             <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', marginBottom: '3rem', lineHeight: '1.6' }}>
               Dein Content. Dein Computer. Dein Web.<br />
-              Erstelle deine Website lokal und publiziere sie als superschnelles HTML.
+              Gestalte deine Website ganz ohne Stress lokal bei dir und bringe sie mit einem Klick blitzschnell online.
             </p>
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
               <button className="btn-primary fade-in" style={{ padding: '1rem 2rem', fontSize: '1.1rem', minWidth: '220px', boxShadow: '0 8px 20px rgba(79, 172, 254, 0.3)' }}
                 onClick={startNewProject}>
-                Neues Projekt
+                Projekt starten
               </button>
               <button className="btn-outline fade-in" style={{ padding: '1rem 2rem', fontSize: '1.1rem', minWidth: '220px', background: 'rgba(255,255,255,0.05)' }}
                 onClick={() => setStep('editor')}>
-                Bisheriges Projekt öffnen
+                Projekt fortsetzen
               </button>
+            </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: '0.8rem',
+              marginTop: '2rem',
+              textAlign: 'left'
+            }}>
+              {[
+                { title: 'Kein Klick-Chaos', text: 'Konzentrier dich auf deine Inhalte statt auf komplizierte Menüs.' },
+                { title: 'Arbeiten in Echtzeit', text: 'Änderungen siehst du direkt auf deinem Rechner.' },
+                { title: 'Echte Freiheit', text: 'Deine Website gehört dir und bleibt unabhängig vom Anbieter.' },
+                { title: 'Design mit Haltung', text: 'Wähle aus vier starken Looks und wirke sofort professionell.' },
+              ].map((item) => (
+                <div key={item.title} style={{
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--surface-color)',
+                  borderRadius: '8px',
+                  padding: '0.75rem 0.9rem'
+                }}>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.25rem' }}>{item.title}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.35 }}>{item.text}</div>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -869,10 +894,10 @@ function App() {
         {/* ====== STEP: PROJECT NAME ====== */}
         {step === 'config' && (
           <div className="glass-panel fade-in" style={{ maxWidth: '600px', width: '100%', padding: '3rem', borderRadius: '12px' }}>
-            <h2 style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>Projektname</h2>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>Gib deinem Projekt einen Namen – dieser wird als Logo auf deiner Website angezeigt.</p>
+            <h2 style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>Wie soll deine Website heißen?</h2>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>Dieser Name erscheint auch oben als dein Logo auf der Website.</p>
             <div className="input-group">
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Projekt Name</label>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website-Name</label>
               <input type="text" placeholder="z.B. Sarahs Fotografie" value={projectName}
                 onChange={e => setProjectName(e.target.value)} autoFocus />
             </div>
@@ -886,9 +911,9 @@ function App() {
         {/* ====== STEP: PAGES ====== */}
         {step === 'pages' && (
           <div className="glass-panel fade-in" style={{ maxWidth: '600px', width: '100%', padding: '3rem', borderRadius: '12px' }}>
-            <h2 style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>Seitenstruktur</h2>
+            <h2 style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>Welche Seiten brauchst du?</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>
-              Wähle, benenne und ordne die Seiten deiner Website. Ziehe eine Seite, um die Reihenfolge zu ändern.
+              Du kannst Seiten per Drag-and-Drop sortieren oder per Doppelklick umbenennen.
             </p>
 
             {/* Page List */}
@@ -948,10 +973,10 @@ function App() {
 
             {/* Add Page */}
             <form onSubmit={handleAddPage} style={{ display: 'flex', gap: '1rem' }}>
-              <input type="text" placeholder="Neue Seite hinzufügen (z.B. Blog)" value={newPageName}
+              <input type="text" placeholder="Neue Seite hinzufügen" value={newPageName}
                 onChange={e => setNewPageName(e.target.value)} style={{ flex: 1 }} />
               <button type="submit" className="btn-outline" style={{ padding: '0.8rem 1.5rem', whiteSpace: 'nowrap' }}>
-                + Hinzufügen
+                Hinzufügen
               </button>
             </form>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '1rem', textAlign: 'center' }}>
@@ -978,9 +1003,9 @@ function App() {
         {/* ====== STEP: DESIGN ====== */}
         {step === 'design' && (
           <div className="fade-in" style={{ maxWidth: '1000px', width: '100%', padding: '2rem' }}>
-            <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem', textAlign: 'center' }}>Wähle ein Design</h2>
+            <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem', textAlign: 'center' }}>Dein Stil</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '3rem', textAlign: 'center' }}>
-              Das Design bestimmt Typografie, Layout und Farbschema deiner Website.
+              Wähle einen Look, der zu dir passt. Schrift, Layout und Farben ändern sich sofort.
             </p>
 
             {/* Theme Grid with Visual Previews */}
@@ -1050,17 +1075,17 @@ function App() {
         {/* ====== STEP: HOSTING / ACCOUNT ====== */}
         {step === 'account' && (
           <div className="glass-panel fade-in" style={{ maxWidth: '600px', width: '100%', padding: '3rem', borderRadius: '12px' }}>
-            <h2 style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>Hosting & Provider</h2>
+            <h2 style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>Wo soll dein Web wohnen?</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>
-              Trage deine FTP/SSH-Zugangsdaten ein. Flatsite erledigt das gesamte Setup im Hintergrund für dich.
+              Trage hier die Zugangsdaten deines Anbieters ein. Flatsite kümmert sich um den Rest.
             </p>
 
             <div className="input-group" style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Server Host / IP</label>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Server-Adresse</label>
               <input type="text" placeholder="z.B. ftp.hostpoint.ch" value={ftpServer} onChange={e => setFtpServer(e.target.value)} />
             </div>
             <div className="input-group" style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website URL (optional für schnelles ZIP-Deploy)</label>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website-Adresse (optional)</label>
               <input
                 type="text"
                 placeholder="z.B. swiss-ai-community.ch"
@@ -1070,13 +1095,13 @@ function App() {
               />
             </div>
             <div className="input-group" style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Zielpfad auf Server</label>
-              <input type="text" placeholder="/ oder /flatsite-test" value={targetPath} onChange={e => setTargetPath(e.target.value)} />
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Speicherort</label>
+              <input type="text" placeholder="/ oder /mein-projekt" value={targetPath} onChange={e => setTargetPath(e.target.value)} />
             </div>
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
               <div className="input-group" style={{ flex: 1 }}>
                 <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Benutzername</label>
-                <input type="text" placeholder="Dein FTP Benutzer" value={ftpUser} onChange={e => setFtpUser(e.target.value)} />
+                <input type="text" placeholder="Benutzername bei deinem Anbieter" value={ftpUser} onChange={e => setFtpUser(e.target.value)} />
               </div>
               <div className="input-group" style={{ width: '100px' }}>
                 <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Port</label>
@@ -1085,14 +1110,14 @@ function App() {
             </div>
             <div className="input-group" style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Passwort</label>
-              <input type="text" placeholder="Dein FTP Passwort" value={ftpPassword}
-                onChange={e => setFtpPassword(e.target.value)}
-                style={{ WebkitTextSecurity: 'disc' }} />
+                <input type="text" placeholder="Passwort bei deinem Anbieter" value={ftpPassword}
+                  onChange={e => setFtpPassword(e.target.value)}
+                  style={{ WebkitTextSecurity: 'disc' }} />
             </div>
 
             <button className="btn-primary" style={{ width: '100%', padding: '1rem', marginTop: '0.5rem' }}
               onClick={handleHostingComplete} disabled={isSettingUp}>
-              {isSettingUp ? 'Setup läuft...' : 'Setup abschliessen & zum Editor'}
+              {isSettingUp ? 'Flatsite richtet alles ein...' : 'Fertig einrichten & zur Übersicht'}
             </button>
           </div>
         )}
@@ -1123,7 +1148,7 @@ function App() {
                   }}
                   onClick={handleOpenWebsite}
                   disabled={!canOpenWebsite}
-                  title={canOpenWebsite ? websiteViewUrl : 'Bitte zuerst Website URL erfassen'}
+                  title={canOpenWebsite ? websiteViewUrl : 'Bitte zuerst Website-Adresse erfassen'}
                 >
                   Website ansehen
                 </button>
@@ -1140,7 +1165,7 @@ function App() {
                 }}
                   onClick={() => setShowExportModal(true)}
                   disabled={publishButtonDisabled}>
-                  {hasPendingPublishChanges ? 'Publizieren' : 'Publiziert'}
+                  {hasPendingPublishChanges ? 'Live schalten' : 'Live'}
                 </button>
               </div>
             </div>
@@ -1157,13 +1182,13 @@ function App() {
                   style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem' }} />
               </div>
               <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Footer Link (Adresse)</label>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Instagram-Link</label>
                 <input type="text" placeholder="z.B. instagram.com/deinprofil" value={footerLine2}
                   onChange={e => setFooterLine2(e.target.value)}
                   style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem' }} />
               </div>
               <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Footer Zeile 3</label>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Kontakt E-Mail (optional)</label>
                 <input type="text" placeholder="z.B. mail@example.com" value={footerLine3}
                   onChange={e => setFooterLine3(e.target.value)}
                   style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem' }} />
@@ -1193,15 +1218,15 @@ function App() {
             <h2 style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>Providerwechsel</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>
               Du möchtest deine Website bei einem anderen Hosting-Anbieter betreiben?
-              Trage einfach die neuen FTP-Zugangsdaten ein. Beim nächsten Publizieren wird die Seite auf dem neuen Server hochgeladen.
+              Trage einfach die neuen Zugangsdaten ein. Beim nächsten Live-Schalten wird die Seite auf dem neuen Server hochgeladen.
             </p>
 
             <div className="input-group" style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Neuer Server Host / IP</label>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Server-Adresse</label>
               <input type="text" placeholder="z.B. ftp.neuer-provider.ch" value={ftpServer} onChange={e => setFtpServer(e.target.value)} />
             </div>
             <div className="input-group" style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website URL</label>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website-Adresse</label>
               <input
                 type="text"
                 placeholder="z.B. swiss-ai-community.ch"
@@ -1211,13 +1236,13 @@ function App() {
               />
             </div>
             <div className="input-group" style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Zielpfad</label>
-              <input type="text" placeholder="/ oder /flatsite-test" value={targetPath} onChange={e => setTargetPath(e.target.value)} />
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Speicherort</label>
+              <input type="text" placeholder="/ oder /mein-projekt" value={targetPath} onChange={e => setTargetPath(e.target.value)} />
             </div>
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
               <div className="input-group" style={{ flex: 1 }}>
                 <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Benutzername</label>
-                <input type="text" placeholder="Neuer FTP Benutzer" value={ftpUser} onChange={e => setFtpUser(e.target.value)} />
+                <input type="text" placeholder="Benutzername bei deinem Anbieter" value={ftpUser} onChange={e => setFtpUser(e.target.value)} />
               </div>
               <div className="input-group" style={{ width: '100px' }}>
                 <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Port</label>
@@ -1226,7 +1251,7 @@ function App() {
             </div>
             <div className="input-group" style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Passwort</label>
-              <input type="text" placeholder="Neues FTP Passwort" value={ftpPassword}
+              <input type="text" placeholder="Passwort bei deinem Anbieter" value={ftpPassword}
                 onChange={e => setFtpPassword(e.target.value)}
                 style={{ WebkitTextSecurity: 'disc' }} />
             </div>
@@ -1253,17 +1278,17 @@ function App() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(5px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeIn 0.3s ease' }}>
           <div className="glass-panel fade-in" style={{ padding: '3rem', borderRadius: '12px', maxWidth: '600px', width: '90%', textAlign: 'center', position: 'relative' }}>
             <button onClick={() => { setShowExportModal(false); setExportResult(''); }} style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.5rem', fontSize: '1.2rem' }}>✖</button>
-            <h2 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Website Publizieren</h2>
+            <h2 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Website live schalten</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>
-              Flatsite verpackt deinen Content und lädt ihn via FTP auf {ftpServer || 'den Server'} hoch.
+              Flatsite macht alles bereit und bringt deine Seite ins Netz.
               <br />
-              Zielpfad: <strong>{targetPath || '/'}</strong>{websiteUrl ? <> · Website URL: <strong>{websiteUrl}</strong></> : null}
+              Speicherort: <strong>{targetPath || '/'}</strong>{websiteUrl ? <> · Website-Adresse: <strong>{websiteUrl}</strong></> : null}
             </p>
 
             {isExporting ? (
               <div style={{ padding: '2rem' }}>
                 <div style={{ width: '40px', height: '40px', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: '#4facfe', borderRadius: '50%', margin: '0 auto', animation: 'spin 1s linear infinite' }}></div>
-                <p style={{ marginTop: '1.5rem', fontSize: '1.1rem' }}>Generiere & Deploye...</p>
+                <p style={{ marginTop: '1.5rem', fontSize: '1.1rem' }}>Flatsite macht alles bereit und bringt deine Seite ins Netz...</p>
                 <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1rem' }}>
                   <button
                     className="btn-outline"
@@ -1273,7 +1298,7 @@ function App() {
                       setIsExporting(false);
                     }}
                   >
-                    Abbrechen & Zur Übersicht
+                    Abbrechen
                   </button>
                 </div>
                 <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
@@ -1290,9 +1315,23 @@ function App() {
                   <h3 style={{ margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
                     {isExportError ? '✗' : '✓'} {exportResult}
                   </h3>
+                  {isExportError && (
+                    <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                      Prüf bitte kurz: Server-Adresse, Benutzername, Passwort und Speicherort.
+                    </p>
+                  )}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', marginTop: '1rem' }}>
                   {!isExportError && (
+                    <>
+                      <button
+                        className="btn-outline"
+                        style={{ padding: '0.7rem 1.2rem', fontSize: '0.85rem' }}
+                        onClick={handleOpenWebsite}
+                        disabled={!canOpenWebsite}
+                      >
+                        Website ansehen
+                      </button>
                     <button
                       className="btn-primary"
                       style={{ padding: '0.7rem 1.2rem', fontSize: '0.85rem' }}
@@ -1304,6 +1343,7 @@ function App() {
                     >
                       Zur Übersicht
                     </button>
+                    </>
                   )}
                   <button
                     className="btn-outline"
@@ -1319,7 +1359,7 @@ function App() {
               </div>
             ) : (
               <button className="btn-primary" style={{ padding: '1rem 3rem', fontSize: '1.1rem' }} onClick={handleExport}>
-                Deployment Starten
+                Live schalten
               </button>
             )}
           </div>
