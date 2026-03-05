@@ -1,18 +1,86 @@
 </main>
 
+<?php
+$defaultCopyright = '© ' . date('Y') . ' ' . $site->title();
+$footerLine1 = trim((string)$site->footerline1()->value());
+$footerLine2 = trim((string)$site->footerline2()->value());
+$footerLine3 = trim((string)$site->footerline3()->value());
+
+if (preg_match('/^Footerline[0-9]+:/i', $footerLine1)) {
+    $footerLine1 = '';
+}
+if (preg_match('/^Footerline[0-9]+:/i', $footerLine2)) {
+    $footerLine2 = '';
+}
+if (preg_match('/^Footerline[0-9]+:/i', $footerLine3)) {
+    $footerLine3 = '';
+}
+
+$rawCopyrightName = $footerLine1 !== '' ? $footerLine1 : trim((string)$site->title());
+if ($rawCopyrightName === '') {
+    $copyrightText = $defaultCopyright;
+} elseif (preg_match('/©|&copy;|\b\d{4}\b/u', $rawCopyrightName) === 1) {
+    // If user already entered a full copyright string, keep it as-is
+    $copyrightText = $rawCopyrightName;
+} else {
+    $copyrightText = '© ' . date('Y') . ' ' . $rawCopyrightName;
+}
+
+$line2Value = $footerLine2 !== '' ? $footerLine2 : trim((string)$site->instagram()->value());
+$line3Value = $footerLine3 !== '' ? $footerLine3 : trim((string)$site->email()->value());
+
+$normalizeLink = function (string $value): string {
+    $trimmed = trim($value);
+    if ($trimmed === '') return '';
+    if (preg_match('~^(https?://|mailto:|tel:)~i', $trimmed) === 1) return $trimmed;
+    return 'https://' . ltrim($trimmed, '/');
+};
+
+$line2Link = $normalizeLink($line2Value);
+$line3Link = '';
+if ($line3Value !== '') {
+    if (filter_var($line3Value, FILTER_VALIDATE_EMAIL)) {
+        $line3Link = 'mailto:' . $line3Value;
+    } else {
+        $line3Link = $normalizeLink($line3Value);
+    }
+}
+?>
+
 <!-- Footer -->
 <footer class="site-footer fade-in">
     <div class="footer-content">
-        <p>&copy;
-            <?= date('Y')?>
-            <?= $site->title()?>. Alle Rechte vorbehalten.
-        </p>
-        <div class="social-links">
-            <?php if ($site->instagram()->isNotEmpty()): ?>
-            <a href="<?= $site->instagram()?>" target="_blank">Instagram</a>
-            <?php
-endif ?>
-        </div>
+        <p class="footer-item"><?= html($copyrightText) ?></p>
+
+        <?php if ($line2Value !== ''): ?>
+            <p class="footer-item">
+                <?php if ($line2Link !== ''): ?>
+                    <a href="<?= esc($line2Link, 'attr') ?>" target="_blank" rel="noopener noreferrer" aria-label="Instagram" title="Instagram" style="display:inline-flex;align-items:center;justify-content:center;line-height:1;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+                            <path d="M16 11.37a4 4 0 1 1-3.37-3.37 4 4 0 0 1 3.37 3.37z"></path>
+                            <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+                        </svg>
+                    </a>
+                <?php else: ?>
+                    <?= html($line2Value) ?>
+                <?php endif ?>
+            </p>
+        <?php endif ?>
+
+        <?php if ($line3Value !== ''): ?>
+            <p class="footer-item">
+                <?php if ($line3Link !== ''): ?>
+                    <?php if (str_starts_with($line3Link, 'mailto:')): ?>
+                        <a href="<?= esc($line3Link, 'attr') ?>"><?= html($line3Value) ?></a>
+                    <?php else: ?>
+                        <a href="<?= esc($line3Link, 'attr') ?>" target="_blank" rel="noopener noreferrer"><?= html($line3Value) ?></a>
+                    <?php endif ?>
+                <?php else: ?>
+                    <?= html($line3Value) ?>
+                <?php endif ?>
+            </p>
+        <?php endif ?>
     </div>
 </footer>
 
