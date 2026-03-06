@@ -1284,13 +1284,20 @@ const saveProjectAtPath = (projectPathInput, statePayload = {}) => {
     const name = String(statePayload?.projectName || previousManifest?.name || fallbackName).trim() || fallbackName;
 
     const currentDirName = path.basename(projectPath);
+    const previousNameNormalized = normalizeProjectDirName(previousManifest?.name || '');
+    const nextNameNormalized = normalizeProjectDirName(name);
     const shouldRenameAutoDir =
         AUTO_PROJECT_DIR_PATTERN.test(currentDirName) &&
         String(name || '').trim().length > 0;
+    const shouldRenameNameDir =
+        Boolean(previousNameNormalized) &&
+        currentDirName === previousNameNormalized &&
+        Boolean(nextNameNormalized) &&
+        nextNameNormalized !== currentDirName;
 
-    if (shouldRenameAutoDir) {
+    if (shouldRenameAutoDir || shouldRenameNameDir) {
         const parentDir = path.dirname(projectPath);
-        const normalizedDirName = normalizeProjectDirName(name);
+        const normalizedDirName = nextNameNormalized;
         if (normalizedDirName && normalizedDirName !== currentDirName) {
             const desiredPath = path.join(parentDir, normalizedDirName);
             const nextPath =
