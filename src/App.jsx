@@ -273,6 +273,7 @@ function App() {
   const [projects, setProjects] = useState([]);
   const [showProjectList, setShowProjectList] = useState(false);
   const [showProviderGuide, setShowProviderGuide] = useState(false);
+  const [showEditorActionsMenu, setShowEditorActionsMenu] = useState(false);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [isOpeningProject, setIsOpeningProject] = useState(false);
   const [projectError, setProjectError] = useState('');
@@ -477,6 +478,12 @@ function App() {
       setPanelSrc(`/panel/site?ts=${Date.now()}`);
     }
   }, [step]);
+
+  useEffect(() => {
+    if (step !== 'editor' && showEditorActionsMenu) {
+      setShowEditorActionsMenu(false);
+    }
+  }, [step, showEditorActionsMenu]);
 
   useEffect(() => {
     fetchProjectSignature();
@@ -754,12 +761,8 @@ function App() {
     }
   };
 
-  const computedWebsiteViewUrl = buildWebsiteViewUrl();
   const localPreviewUrl = 'http://127.0.0.1:8000/';
-  const websiteViewUrl =
-    isLive && lastPublishedViewUrl
-      ? lastPublishedViewUrl
-      : computedWebsiteViewUrl;
+  const websiteViewUrl = String(lastPublishedViewUrl || '').trim();
   const canOpenWebsite = Boolean(websiteViewUrl);
 
   const handleOpenWebsite = () => {
@@ -1591,36 +1594,28 @@ function App() {
               </div>
 
               {/* Right: Actions */}
-              <div style={{ display: 'flex', gap: '0.8rem' }}>
+              <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', position: 'relative' }}>
                 <button
                   className="btn-outline"
-                  style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}
+                  style={{ padding: '0.55rem 1.05rem', fontSize: '0.86rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
                   onClick={handleOpenLocalPreview}
                   title="Öffnet deine lokale Vorschau ohne Upload"
                 >
-                  Lokale Vorschau
-                </button>
-                <button
-                  className="btn-outline"
-                  style={{
-                    padding: '0.5rem 1rem',
-                    fontSize: '0.8rem',
-                    opacity: canOpenWebsite ? 1 : 0.5,
-                    cursor: canOpenWebsite ? 'pointer' : 'not-allowed'
-                  }}
-                  onClick={handleOpenWebsite}
-                  disabled={!canOpenWebsite}
-                  title={canOpenWebsite ? websiteViewUrl : 'Bitte zuerst Website-Adresse erfassen'}
-                >
-                  Website ansehen
-                </button>
-                <button className="btn-outline" style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}
-                  onClick={() => setStep('provider')}>
-                  Provider wechseln
+                  <span style={{ display: 'inline-flex', width: '16px', height: '16px', alignItems: 'center', justifyContent: 'center' }} aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                  </span>
+                  Vorschau
                 </button>
                 <button className="btn-primary" style={{
-                  padding: '0.5rem 1.5rem',
-                  fontSize: '0.8rem',
+                  padding: '0.55rem 1.3rem',
+                  fontSize: '0.86rem',
+                  fontWeight: 700,
+                  background: 'linear-gradient(135deg, #d73737, #b71f1f)',
+                  borderColor: '#a01c1c',
+                  boxShadow: publishButtonDisabled ? 'none' : '0 6px 14px rgba(183,31,31,0.35)',
                   opacity: publishButtonDisabled ? 0.45 : 1,
                   cursor: publishButtonDisabled ? 'not-allowed' : 'pointer',
                   filter: publishButtonDisabled ? 'grayscale(0.25)' : 'none'
@@ -1629,48 +1624,135 @@ function App() {
                   disabled={publishButtonDisabled}>
                   {hasPendingPublishChanges ? 'Live schalten' : 'Live'}
                 </button>
+
+                <div style={{ position: 'relative' }}>
+                  <button
+                    className="btn-outline"
+                    style={{ padding: '0.5rem 0.95rem', fontSize: '0.82rem' }}
+                    onClick={() => setShowEditorActionsMenu((prev) => !prev)}
+                  >
+                    Mehr
+                  </button>
+                  {showEditorActionsMenu && (
+                    <div style={{
+                      position: 'absolute',
+                      right: 0,
+                      top: 'calc(100% + 0.45rem)',
+                      minWidth: '210px',
+                      background: 'rgba(20,20,20,0.95)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '10px',
+                      boxShadow: '0 10px 24px rgba(0,0,0,0.32)',
+                      padding: '0.45rem',
+                      zIndex: 50,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.35rem'
+                    }}>
+                      <button
+                        className="btn-outline"
+                        style={{ width: '100%', textAlign: 'left', fontSize: '0.8rem', padding: '0.5rem 0.65rem' }}
+                        onClick={() => {
+                          setShowEditorActionsMenu(false);
+                          setStep('provider');
+                        }}
+                      >
+                        Provider wechseln
+                      </button>
+                      <button
+                        className="btn-outline"
+                        style={{
+                          width: '100%',
+                          textAlign: 'left',
+                          fontSize: '0.8rem',
+                          padding: '0.5rem 0.65rem',
+                          opacity: canOpenWebsite ? 1 : 0.45,
+                          cursor: canOpenWebsite ? 'pointer' : 'not-allowed'
+                        }}
+                        onClick={() => {
+                          if (!canOpenWebsite) return;
+                          setShowEditorActionsMenu(false);
+                          handleOpenWebsite();
+                        }}
+                        disabled={!canOpenWebsite}
+                        title={canOpenWebsite ? websiteViewUrl : 'Erst nach dem ersten Live-Schalten verfügbar'}
+                      >
+                        Website ansehen
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            {/* Footer Fields */}
-            <div style={{
-              display: 'flex', gap: '1rem', padding: '0.8rem 2rem',
-              background: 'var(--surface-color)', borderBottom: '1px solid var(--border-color)'
-            }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Copyright Name (© + Jahr automatisch)</label>
-                <input type="text" placeholder="z.B. Dein Name" value={footerLine1}
-                  onChange={e => setFooterLine1(e.target.value)}
-                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem' }} />
+            <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+              {/* Kirby Editor Iframe */}
+              <div style={{ flex: 1, minWidth: 0, display: 'flex' }}>
+                {kirbyReady ? (
+                  <iframe
+                    src={panelSrc}
+                    style={{ width: '100%', flex: 1, border: 'none', minHeight: '600px' }}
+                    title="Kirby CMS Editor"
+                  />
+                ) : (
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem' }}>
+                    <div style={{ width: '40px', height: '40px', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: '#4facfe', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                    <p style={{ color: 'var(--text-secondary)' }}>Layout Editor wird gestartet...</p>
+                    <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
+                  </div>
+                )}
               </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Instagram-Link</label>
-                <input type="text" placeholder="z.B. instagram.com/deinprofil" value={footerLine2}
-                  onChange={e => setFooterLine2(e.target.value)}
-                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem' }} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>Kontakt E-Mail (optional)</label>
-                <input type="text" placeholder="z.B. mail@example.com" value={footerLine3}
-                  onChange={e => setFooterLine3(e.target.value)}
-                  style={{ padding: '0.4rem 0.6rem', fontSize: '0.8rem' }} />
-              </div>
-            </div>
 
-            {/* Kirby Editor Iframe */}
-            {kirbyReady ? (
-              <iframe
-                src={panelSrc}
-                style={{ width: '100%', flex: 1, border: 'none', minHeight: '600px' }}
-                title="Kirby CMS Editor"
-              />
-            ) : (
-              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem' }}>
-                <div style={{ width: '40px', height: '40px', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: '#4facfe', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-                <p style={{ color: 'var(--text-secondary)' }}>Layout Editor wird gestartet...</p>
-                <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
-              </div>
-            )}
+              {/* Footer block in editor context */}
+              <aside style={{
+                width: '340px',
+                borderLeft: '1px solid var(--border-color)',
+                background: 'var(--surface-color)',
+                padding: '1rem',
+                overflowY: 'auto'
+              }}>
+                <h3 style={{ margin: '0 0 0.35rem 0', fontSize: '1rem' }}>Footer</h3>
+                <p style={{ margin: '0 0 1rem 0', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                  Diese Angaben werden auf deiner Website unten angezeigt.
+                </p>
+                <div className="input-group" style={{ marginBottom: '0.85rem' }}>
+                  <label style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
+                    Copyright Name (© + Jahr automatisch)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="z.B. Dein Name"
+                    value={footerLine1}
+                    onChange={e => setFooterLine1(e.target.value)}
+                    style={{ padding: '0.45rem 0.6rem', fontSize: '0.82rem' }}
+                  />
+                </div>
+                <div className="input-group" style={{ marginBottom: '0.85rem' }}>
+                  <label style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
+                    Instagram-Link
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="z.B. instagram.com/deinprofil"
+                    value={footerLine2}
+                    onChange={e => setFooterLine2(e.target.value)}
+                    style={{ padding: '0.45rem 0.6rem', fontSize: '0.82rem' }}
+                  />
+                </div>
+                <div className="input-group">
+                  <label style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
+                    Kontakt E-Mail (optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="z.B. mail@example.com"
+                    value={footerLine3}
+                    onChange={e => setFooterLine3(e.target.value)}
+                    style={{ padding: '0.45rem 0.6rem', fontSize: '0.82rem' }}
+                  />
+                </div>
+              </aside>
+            </div>
           </div>
         )}
 
