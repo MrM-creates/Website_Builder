@@ -329,6 +329,71 @@ const listContentDirectories = (contentRoot) => {
     });
 };
 
+const readPageTitleFromDirectory = (contentRoot, dirName, fallbackTitle = '') => {
+    const txtPath = path.join(contentRoot, dirName, 'default.txt');
+    if (!fs.existsSync(txtPath)) return fallbackTitle;
+
+    try {
+        const raw = fs.readFileSync(txtPath, 'utf-8');
+        const match = raw.match(/^Title:\s*(.+)$/m);
+        const title = String(match?.[1] || '').trim();
+        return title || fallbackTitle;
+    } catch {
+        return fallbackTitle;
+    }
+};
+
+const humanizeSlug = (slug = '') =>
+    String(slug || '')
+        .replace(/[-_]+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const listPagesForFlatsiteUi = (contentRoot) => {
+    if (!fs.existsSync(contentRoot)) return [];
+
+    const items = fs
+        .readdirSync(contentRoot, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && /^\d+_/.test(String(entry.name || '')))
+        .map((entry, index) => {
+            const rawName = String(entry.name || '').trim();
+            if (!rawName || rawName.startsWith('.')) return null;
+            if (rawName === 'error') return null;
+
+            const listedMatch = rawName.match(/^(\d+)_([\s\S]+)$/);
+            const slugSource = listedMatch?.[2] || rawName;
+            const slug = sanitizeSlug(slugSource);
+            if (!slug) return null;
+
+            const order = listedMatch ? parseInt(listedMatch[1], 10) || 999999 : 1000000 + index;
+            const fallbackTitle = humanizeSlug(slugSource);
+            const title = readPageTitleFromDirectory(contentRoot, rawName, fallbackTitle) || fallbackTitle;
+
+            return {
+                id: slug,
+                title,
+                selected: true,
+                _order: order,
+                _name: rawName
+            };
+        })
+        .filter(Boolean)
+        .sort((a, b) => {
+            if (a._order !== b._order) return a._order - b._order;
+            return String(a._name).localeCompare(String(b._name), 'de', { sensitivity: 'base' });
+        });
+
+    const unique = [];
+    const seen = new Set();
+    for (const item of items) {
+        if (seen.has(item.id)) continue;
+        seen.add(item.id);
+        unique.push({ id: item.id, title: item.title, selected: true });
+    }
+
+    return unique;
+};
+
 const upsertPageContentFile = (contentDir, title) => {
     const txtFilePath = path.join(contentDir, 'default.txt');
 
@@ -1867,6 +1932,18 @@ app.post('/api/reset-pages', express.json(), (req, res) => {
     } catch (err) {
         console.error('Fehler beim Zuruecksetzen der Seiten:', err);
         res.status(500).json({ error: 'Seiten konnten nicht zurueckgesetzt werden' });
+    }
+});
+
+app.get('/api/content-pages', (req, res) => {
+    const contentRoot = path.join(__dirname, 'kirby-cms', 'content');
+
+    try {
+        const pages = listPagesForFlatsiteUi(contentRoot);
+        res.json({ success: true, pages });
+    } catch (err) {
+        console.error('Fehler beim Laden der Content-Seiten:', err);
+        res.status(500).json({ success: false, error: 'Content-Seiten konnten nicht geladen werden' });
     }
 });
 

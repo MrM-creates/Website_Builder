@@ -458,6 +458,31 @@ function App() {
     }
   };
 
+  const fetchPagesFromKirbyContent = async ({ applyState = true } = {}) => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/content-pages`);
+      const data = await res.json();
+      if (!res.ok || !data?.success || !Array.isArray(data?.pages)) {
+        return [];
+      }
+
+      const normalized = data.pages
+        .map((page) => ({
+          id: String(page?.id || '').trim(),
+          title: String(page?.title || '').trim(),
+          selected: page?.selected !== false,
+        }))
+        .filter((page) => page.id && page.title);
+
+      if (applyState && normalized.length) {
+        setPages(normalized);
+      }
+      return normalized;
+    } catch {
+      return [];
+    }
+  };
+
   const saveCurrentProject = async (projectIdOverride = '') => {
     const projectId = projectIdOverride || currentProjectId;
     if (!projectId) return;
@@ -494,7 +519,11 @@ function App() {
       }
 
       setCurrentProjectId(data.project.id);
-      applyProjectState(data.project.state || {});
+      const loadedState = { ...(data.project.state || {}) };
+      if (!String(loadedState.projectName || '').trim() && String(data.project?.name || '').trim()) {
+        loadedState.projectName = String(data.project.name);
+      }
+      applyProjectState(loadedState);
       setShowProjectList(false);
       setStep('editor');
       await refreshProjects();
@@ -554,6 +583,11 @@ function App() {
       setShowEditorActionsMenu(false);
     }
   }, [step, showEditorActionsMenu]);
+
+  useEffect(() => {
+    if (step !== 'pages') return;
+    fetchPagesFromKirbyContent({ applyState: true }).catch(() => {});
+  }, [step]);
 
   useEffect(() => {
     fetchProjectSignature();
@@ -896,7 +930,7 @@ function App() {
       },
     });
 
-  const syncProjectStateToKirby = async ({ includeAccount = false } = {}) => {
+  const syncProjectStateToKirby = async ({ includeAccount = false, syncPages = true } = {}) => {
     if (includeAccount) {
       await fetch(`${BACKEND_URL}/api/ensure-account`, {
         method: 'POST',
@@ -916,15 +950,17 @@ function App() {
       }),
     });
 
-    await fetch(`${BACKEND_URL}/api/sync-pages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        pages: pages
-          .filter((p) => p.selected)
-          .map((p) => ({ slug: p.id, title: p.title }))
-      }),
-    });
+    if (syncPages) {
+      await fetch(`${BACKEND_URL}/api/sync-pages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pages: pages
+            .filter((p) => p.selected)
+            .map((p) => ({ slug: p.id, title: p.title }))
+        }),
+      });
+    }
 
     const color = getColor(selectedDesign, selectedColor);
     await fetch(`${BACKEND_URL}/api/update-theme`, {
@@ -968,7 +1004,8 @@ function App() {
       }
 
       try {
-        await syncProjectStateToKirby();
+        await fetchPagesFromKirbyContent({ applyState: true });
+        await syncProjectStateToKirby({ syncPages: false });
         const refreshedUrl = `${localPreviewUrl}?preview=${Date.now()}`;
         if (!previewTab.closed) {
           navigatePreview(refreshedUrl);
@@ -1074,6 +1111,10 @@ function App() {
       });
       const data = await res.json();
       if (data.success) {
+        const syncedPages = await fetchPagesFromKirbyContent({ applyState: false });
+        if (syncedPages.length) {
+          setPages(syncedPages);
+        }
         setExportResult('Deine Website ist jetzt live!');
         setIsLive(true);
         const postDeploySignature = await fetchProjectSignature();
@@ -1201,7 +1242,10 @@ function App() {
               const isActive = step === nav.state || (nav.label === 'Übersicht' && step === 'provider');
               return (
                 <span key={nav.label} onClick={() => {
-                  if (nav.state === 'editor' && setupDone) {
+                  if (nav.state === 'pages') {
+                    fetchPagesFromKirbyContent({ applyState: true }).catch(() => {});
+                  }
+                  if (nav.state === 'editor') {
                     goToEditorWithSync();
                     return;
                   }
