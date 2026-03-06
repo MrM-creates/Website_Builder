@@ -111,6 +111,8 @@ const DEFAULT_PAGES = [
 ];
 
 const TEST_HOSTING_DEFAULTS = {
+  hostingProvider: 'hostpoint',
+  connectionType: 'ftpes',
   ftpServer: 'sl91.web.hostpoint.ch',
   ftpUser: 'testuser@egakinup.myhostpoint.ch',
   ftpPassword: '',
@@ -126,6 +128,53 @@ const PROVIDER_GUIDES = [
   { id: 'metanet', name: 'Metanet', short: 'ME', url: 'https://support.metanet.ch/45' },
   { id: 'hoststar', name: 'Hoststar', short: 'HS', url: 'https://www.hoststar.ch/de/support/my-panel/hosting/ftp-verwaltung' },
 ];
+
+const CONNECTION_TYPES = {
+  ftpes: { label: 'FTP/FTPES', defaultPort: '21' },
+  sftp: { label: 'SFTP (SSH)', defaultPort: '22' },
+};
+
+const HOSTING_PROVIDER_PRESETS = {
+  hostpoint: { id: 'hostpoint', label: 'Hostpoint', connectionType: 'ftpes', port: '21', server: 'sl91.web.hostpoint.ch', targetPath: '/' },
+  infomaniak: { id: 'infomaniak', label: 'Infomaniak', connectionType: 'ftpes', port: '21', server: 'ftp.infomaniak.com', targetPath: '/' },
+  cyon: { id: 'cyon', label: 'Cyon', connectionType: 'sftp', port: '22', server: 'ssh.cyon.ch', targetPath: '/' },
+  metanet: { id: 'metanet', label: 'Metanet', connectionType: 'ftpes', port: '21', server: 'ftp.metanet.ch', targetPath: '/' },
+  hoststar: { id: 'hoststar', label: 'Hoststar', connectionType: 'ftpes', port: '21', server: 'ftp.hoststar.ch', targetPath: '/' },
+  other: { id: 'other', label: 'Anderer Anbieter', connectionType: 'ftpes', port: '21', server: '', targetPath: '/' },
+};
+
+const inferConnectionTypeFromPort = (portValue = '') => {
+  const normalized = String(portValue ?? '').trim();
+  return normalized === '22' ? 'sftp' : 'ftpes';
+};
+
+const mapDeployErrorToUserMessage = (raw = '') => {
+  const message = String(raw || '').trim();
+  const lower = message.toLowerCase();
+
+  if (!message) return 'Upload fehlgeschlagen. Bitte Daten prüfen und erneut versuchen.';
+  if (lower.includes('fehlende ftp credentials')) return 'Benutzername oder Passwort fehlt. Bitte die Hosting-Daten prüfen.';
+  if (lower.includes('530') || lower.includes('authentication failed') || lower.includes('login incorrect')) {
+    return 'Login fehlgeschlagen. Benutzername oder Passwort sind nicht korrekt.';
+  }
+  if (lower.includes('getaddrinfo') || lower.includes('enotfound') || lower.includes('eai_again')) {
+    return 'Server-Adresse wurde nicht gefunden. Bitte die Server-Adresse prüfen.';
+  }
+  if (lower.includes('econnrefused') || lower.includes('connection refused')) {
+    return 'Verbindung abgelehnt. Bitte Server-Adresse, Port und Verbindungsart prüfen.';
+  }
+  if (lower.includes('timed out') || lower.includes('etimedout') || lower.includes('timeout')) {
+    return 'Verbindung hat zu lange gedauert. Bitte Internetverbindung oder Server prüfen.';
+  }
+  if (lower.includes('tls') || lower.includes('ssl') || lower.includes('handshake') || lower.includes('eproto')) {
+    return 'TLS/SSL-Fehler. Bitte Port und Verbindungsart (FTP/FTPES oder SFTP) prüfen.';
+  }
+  if (lower.includes('553') || lower.includes('550') || lower.includes('no such file') || lower.includes('not found')) {
+    return 'Speicherort nicht gefunden oder nicht erreichbar. Bitte den Speicherort prüfen.';
+  }
+
+  return `Upload fehlgeschlagen: ${message}`;
+};
 
 /* ==========================================================================
    FLATSITE – Mini Website Preview Component
@@ -245,6 +294,8 @@ function App() {
   const [selectedColor, setSelectedColor] = useState(0);
 
   // Hosting
+  const [hostingProvider, setHostingProvider] = useState(TEST_HOSTING_DEFAULTS.hostingProvider);
+  const [connectionType, setConnectionType] = useState(TEST_HOSTING_DEFAULTS.connectionType);
   const [ftpServer, setFtpServer] = useState(TEST_HOSTING_DEFAULTS.ftpServer);
   const [ftpUser, setFtpUser] = useState(TEST_HOSTING_DEFAULTS.ftpUser);
   const [ftpPassword, setFtpPassword] = useState(TEST_HOSTING_DEFAULTS.ftpPassword);
@@ -274,6 +325,7 @@ function App() {
   const [projects, setProjects] = useState([]);
   const [showProjectList, setShowProjectList] = useState(false);
   const [showProviderGuide, setShowProviderGuide] = useState(false);
+  const [showHostingWhy, setShowHostingWhy] = useState(false);
   const [showEditorActionsMenu, setShowEditorActionsMenu] = useState(false);
   const [defaultProjectsRoot, setDefaultProjectsRoot] = useState('');
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
@@ -291,6 +343,8 @@ function App() {
     pages,
     selectedDesign,
     selectedColor,
+    hostingProvider,
+    connectionType,
     ftpServer,
     ftpUser,
     ftpPassword,
@@ -313,10 +367,14 @@ function App() {
     setPages(Array.isArray(state.pages) && state.pages.length ? state.pages : DEFAULT_PAGES.map((p) => ({ ...p })));
     setSelectedDesign(state.selectedDesign || 'minimalist');
     setSelectedColor(Number.isFinite(state.selectedColor) ? state.selectedColor : 0);
+    const resolvedPort = String(state.ftpPort ?? TEST_HOSTING_DEFAULTS.ftpPort);
+    const resolvedConnectionType = String(state.connectionType || inferConnectionTypeFromPort(resolvedPort));
+    setHostingProvider(String(state.hostingProvider || TEST_HOSTING_DEFAULTS.hostingProvider));
+    setConnectionType(resolvedConnectionType);
     setFtpServer(String(state.ftpServer ?? TEST_HOSTING_DEFAULTS.ftpServer));
     setFtpUser(String(state.ftpUser ?? TEST_HOSTING_DEFAULTS.ftpUser));
     setFtpPassword(String(state.ftpPassword ?? TEST_HOSTING_DEFAULTS.ftpPassword));
-    setFtpPort(String(state.ftpPort ?? TEST_HOSTING_DEFAULTS.ftpPort));
+    setFtpPort(resolvedPort);
     setWebsiteUrl(String(state.websiteUrl ?? TEST_HOSTING_DEFAULTS.websiteUrl));
     setTargetPath(String(state.targetPath ?? TEST_HOSTING_DEFAULTS.targetPath));
     setFooterLine1(String(state.footerLine1 ?? ''));
@@ -335,6 +393,44 @@ function App() {
     setTimeout(() => {
       isApplyingProjectStateRef.current = false;
     }, 0);
+  };
+
+  const getHostingPreset = (providerId = '') =>
+    HOSTING_PROVIDER_PRESETS[String(providerId || '').trim()] || HOSTING_PROVIDER_PRESETS.other;
+
+  const applyHostingPreset = (providerId, { overwriteServer = true } = {}) => {
+    const preset = getHostingPreset(providerId);
+    setHostingProvider(preset.id);
+    setConnectionType(preset.connectionType);
+    setFtpPort(String(preset.port || CONNECTION_TYPES[preset.connectionType]?.defaultPort || '21'));
+    if (overwriteServer) {
+      setFtpServer(String(preset.server || ''));
+    }
+    setTargetPath((prev) => {
+      const current = String(prev || '').trim();
+      return current ? current : String(preset.targetPath || '/');
+    });
+  };
+
+  const handleHostingProviderChange = (providerId) => {
+    applyHostingPreset(providerId, { overwriteServer: true });
+  };
+
+  const handleConnectionTypeChange = (nextType) => {
+    const normalized = String(nextType || '').trim();
+    if (!CONNECTION_TYPES[normalized]) return;
+    setConnectionType(normalized);
+    setFtpPort(CONNECTION_TYPES[normalized].defaultPort);
+  };
+
+  const handleFtpPortChange = (value) => {
+    const nextPort = String(value || '').replace(/[^\d]/g, '');
+    setFtpPort(nextPort);
+    if (nextPort === '22') {
+      setConnectionType('sftp');
+    } else if (nextPort === '21') {
+      setConnectionType('ftpes');
+    }
   };
 
   const pickFolder = async (promptText, initialPath = '') => {
@@ -649,6 +745,8 @@ function App() {
     pages,
     selectedDesign,
     selectedColor,
+    hostingProvider,
+    connectionType,
     ftpServer,
     ftpUser,
     ftpPassword,
@@ -750,6 +848,8 @@ function App() {
     setDragOverIndex(null);
     setSelectedDesign('minimalist');
     setSelectedColor(0);
+    setHostingProvider(TEST_HOSTING_DEFAULTS.hostingProvider);
+    setConnectionType(TEST_HOSTING_DEFAULTS.connectionType);
     setFooterLine1('');
     setFooterLine2('');
     setFooterLine3('');
@@ -810,6 +910,8 @@ function App() {
             pages: DEFAULT_PAGES.map((p) => ({ ...p })),
             selectedDesign: 'minimalist',
             selectedColor: 0,
+            hostingProvider: TEST_HOSTING_DEFAULTS.hostingProvider,
+            connectionType: TEST_HOSTING_DEFAULTS.connectionType,
             ftpServer: TEST_HOSTING_DEFAULTS.ftpServer,
             ftpUser: TEST_HOSTING_DEFAULTS.ftpUser,
             ftpPassword: TEST_HOSTING_DEFAULTS.ftpPassword,
@@ -896,6 +998,10 @@ function App() {
   };
 
   const localPreviewUrl = 'http://127.0.0.1:8000/';
+  const selectedHostingPreset = getHostingPreset(hostingProvider);
+  const serverPlaceholder = selectedHostingPreset.server
+    ? `z.B. ${selectedHostingPreset.server}`
+    : 'z.B. ftp.dein-anbieter.ch';
   const websiteViewUrl = String(lastPublishedViewUrl || '').trim();
   const canOpenWebsite = Boolean(websiteViewUrl);
 
@@ -930,6 +1036,8 @@ function App() {
         footerLine3: footerLine3.trim(),
       },
       hosting: {
+        hostingProvider,
+        connectionType,
         ftpServer: ftpServer.trim(),
         ftpUser: ftpUser.trim(),
         ftpPassword,
@@ -944,6 +1052,7 @@ function App() {
     lastPublishedSignature === null || currentPublishSignature !== lastPublishedSignature;
   const publishButtonDisabled = isExporting || !hasPendingPublishChanges;
   const isExportError =
+    exportResult.toLowerCase().includes('fehler') ||
     exportResult.toLowerCase().includes('fehlgeschlagen') ||
     exportResult.toLowerCase().includes('hoppla');
   const buildOnboardingSyncSignature = () =>
@@ -1125,7 +1234,7 @@ function App() {
           host: ftpServer,
           user: ftpUser,
           password: ftpPassword,
-          port: parseInt(ftpPort, 10) || 21,
+          port: parseInt(ftpPort, 10) || parseInt(CONNECTION_TYPES[connectionType]?.defaultPort || '21', 10),
           websiteUrl: normalizedWebsiteUrl,
           targetPath,
           deployMode: 'auto',
@@ -1135,8 +1244,8 @@ function App() {
           footerLine3,
         }),
       });
-      const data = await res.json();
-      if (data.success) {
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
         const syncedPages = await fetchPagesFromKirbyContent({ applyState: false });
         if (syncedPages.length) {
           setPages(syncedPages);
@@ -1155,13 +1264,16 @@ function App() {
         setLastPublishedSignature(buildPublishSignature(normalizedWebsiteUrl, finalSignature));
         await saveCurrentProject();
       } else {
-        setExportResult('Hoppla, der Upload klemmt kurz.');
+        setIsLive(false);
+        setExportResult(`Fehler: ${mapDeployErrorToUserMessage(data?.error || data?.log || '')}`);
       }
     } catch (err) {
       if (err?.name === 'AbortError') {
-        setExportResult('Hoppla, der Upload klemmt kurz.');
+        setIsLive(false);
+        setExportResult('Fehler: Verbindung abgebrochen (Timeout). Bitte Daten prüfen und erneut versuchen.');
       } else {
-        setExportResult('Hoppla, der Upload klemmt kurz.');
+        setIsLive(false);
+        setExportResult(`Fehler: ${mapDeployErrorToUserMessage(err?.message || '')}`);
       }
     } finally {
       if (timeout) {
@@ -1705,10 +1817,66 @@ function App() {
             <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>
               Trage hier die Zugangsdaten deines Anbieters ein. Flatsite kümmert sich um den Rest.
             </p>
+
+            <div style={{
+              border: '1px solid var(--border-color)',
+              borderRadius: '10px',
+              background: 'rgba(255,255,255,0.03)',
+              marginBottom: '1.2rem'
+            }}>
+              <button
+                type="button"
+                onClick={() => setShowHostingWhy((prev) => !prev)}
+                style={{
+                  width: '100%',
+                  textAlign: 'left',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-primary)',
+                  padding: '0.75rem 0.9rem',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between'
+                }}
+              >
+                <span>Warum brauche ich Hosting?</span>
+                <span style={{ opacity: 0.7 }}>{showHostingWhy ? '−' : '+'}</span>
+              </button>
+              {showHostingWhy && (
+                <div style={{ padding: '0 0.9rem 0.9rem', color: 'var(--text-secondary)', fontSize: '0.86rem', lineHeight: 1.55 }}>
+                  Damit deine Website im Internet erreichbar ist, muss sie auf einen Webserver hochgeladen werden.
+                  Dafür braucht Flatsite einmalig die Zugangsdaten deines Anbieters.
+                  <br />
+                  Deine Inhalte bearbeitest du weiterhin lokal in Flatsite.
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+              <div className="input-group" style={{ flex: 1 }}>
+                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Provider</label>
+                <select value={hostingProvider} onChange={(e) => handleHostingProviderChange(e.target.value)}>
+                  {Object.values(HOSTING_PROVIDER_PRESETS).map((provider) => (
+                    <option key={provider.id} value={provider.id}>{provider.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="input-group" style={{ width: '180px' }}>
+                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Verbindungsart</label>
+                <select value={connectionType} onChange={(e) => handleConnectionTypeChange(e.target.value)}>
+                  {Object.entries(CONNECTION_TYPES).map(([key, info]) => (
+                    <option key={key} value={key}>{info.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             <button
               type="button"
               className="btn-outline"
-              style={{ marginTop: '-1.2rem', marginBottom: '1.2rem', fontSize: '0.82rem', padding: '0.45rem 0.8rem' }}
+              style={{ marginBottom: '1rem', fontSize: '0.82rem', padding: '0.45rem 0.8rem' }}
               onClick={() => setShowProviderGuide(true)}
             >
               Du weißt nicht, wo du diese Daten findest?
@@ -1716,7 +1884,7 @@ function App() {
 
             <div className="input-group" style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Server-Adresse</label>
-              <input type="text" placeholder="z.B. ftp.hostpoint.ch" value={ftpServer} onChange={e => setFtpServer(e.target.value)} />
+              <input type="text" placeholder={serverPlaceholder} value={ftpServer} onChange={e => setFtpServer(e.target.value)} />
             </div>
             <div className="input-group" style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website-Adresse (optional)</label>
@@ -1730,7 +1898,7 @@ function App() {
             </div>
             <div className="input-group" style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Speicherort</label>
-              <input type="text" placeholder="/ oder /mein-projekt" value={targetPath} onChange={e => setTargetPath(e.target.value)} />
+              <input type="text" placeholder={`${selectedHostingPreset.targetPath} oder /mein-projekt`} value={targetPath} onChange={e => setTargetPath(e.target.value)} />
             </div>
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
               <div className="input-group" style={{ flex: 1 }}>
@@ -1739,7 +1907,7 @@ function App() {
               </div>
               <div className="input-group" style={{ width: '100px' }}>
                 <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Port</label>
-                <input type="text" placeholder="21" value={ftpPort} onChange={e => setFtpPort(e.target.value)} />
+                <input type="text" placeholder={CONNECTION_TYPES[connectionType]?.defaultPort || '21'} value={ftpPort} onChange={e => handleFtpPortChange(e.target.value)} />
               </div>
             </div>
             <div className="input-group" style={{ marginBottom: '1.5rem' }}>
@@ -1968,9 +2136,28 @@ function App() {
               Du weißt nicht, wo du diese Daten findest?
             </button>
 
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+              <div className="input-group" style={{ flex: 1 }}>
+                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Provider</label>
+                <select value={hostingProvider} onChange={(e) => handleHostingProviderChange(e.target.value)}>
+                  {Object.values(HOSTING_PROVIDER_PRESETS).map((provider) => (
+                    <option key={provider.id} value={provider.id}>{provider.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="input-group" style={{ width: '180px' }}>
+                <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Verbindungsart</label>
+                <select value={connectionType} onChange={(e) => handleConnectionTypeChange(e.target.value)}>
+                  {Object.entries(CONNECTION_TYPES).map(([key, info]) => (
+                    <option key={key} value={key}>{info.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             <div className="input-group" style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Server-Adresse</label>
-              <input type="text" placeholder="z.B. ftp.neuer-provider.ch" value={ftpServer} onChange={e => setFtpServer(e.target.value)} />
+              <input type="text" placeholder={serverPlaceholder} value={ftpServer} onChange={e => setFtpServer(e.target.value)} />
             </div>
             <div className="input-group" style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website-Adresse</label>
@@ -1984,7 +2171,7 @@ function App() {
             </div>
             <div className="input-group" style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Speicherort</label>
-              <input type="text" placeholder="/ oder /mein-projekt" value={targetPath} onChange={e => setTargetPath(e.target.value)} />
+              <input type="text" placeholder={`${selectedHostingPreset.targetPath} oder /mein-projekt`} value={targetPath} onChange={e => setTargetPath(e.target.value)} />
             </div>
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
               <div className="input-group" style={{ flex: 1 }}>
@@ -1993,7 +2180,7 @@ function App() {
               </div>
               <div className="input-group" style={{ width: '100px' }}>
                 <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Port</label>
-                <input type="text" placeholder="21" value={ftpPort} onChange={e => setFtpPort(e.target.value)} />
+                <input type="text" placeholder={CONNECTION_TYPES[connectionType]?.defaultPort || '21'} value={ftpPort} onChange={e => handleFtpPortChange(e.target.value)} />
               </div>
             </div>
             <div className="input-group" style={{ marginBottom: '1.5rem' }}>
@@ -2062,11 +2249,6 @@ function App() {
                   <h3 style={{ margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
                     {isExportError ? '✗' : '✓'} {exportResult}
                   </h3>
-                  {isExportError && (
-                    <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5 }}>
-                      Prüf bitte kurz: Server-Adresse, Benutzername, Passwort und Speicherort.
-                    </p>
-                  )}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', marginTop: '1rem' }}>
                   {!isExportError && (
