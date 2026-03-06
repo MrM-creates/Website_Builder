@@ -718,18 +718,6 @@ function App() {
 
     let loggedIn = await tryAutoLogin();
 
-    // Recovery path: if Kirby is down, ask backend to (re)start PHP and retry
-    if (!loggedIn) {
-      try {
-        await fetch(`${BACKEND_URL}/api/start-kirby`, { method: 'POST' });
-      } catch (e) {
-        console.log('Kirby Start-Request Fehler:', e.message);
-      }
-
-      await delay(1200);
-      loggedIn = await tryAutoLogin();
-    }
-
     if (!loggedIn) {
       await delay(800);
       await tryAutoLogin();
@@ -1037,12 +1025,6 @@ function App() {
     navigatePreview(initialUrl);
 
     (async () => {
-      try {
-        await fetch(`${BACKEND_URL}/api/start-kirby`, { method: 'POST' });
-      } catch {
-        // ignore, sync/open can still work if Kirby is already running
-      }
-
       try {
         await fetchPagesFromKirbyContent({ applyState: true });
         await syncProjectStateToKirby({ syncPages: false });

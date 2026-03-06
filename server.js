@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import { Client } from 'basic-ftp';
 import SftpClient from 'ssh2-sftp-client';
-import { exec, spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -954,45 +953,16 @@ const isKirbyReachable = async () => {
     }
 };
 
-// State to keep track of the running PHP server
-let phpServerProcess = null;
-
-const startKirbyPhpServer = async (kirbyPath) =>
-    new Promise((resolve) => {
-        console.log(`Starte Kirby PHP Server im Ordner: ${kirbyPath}...`);
-
-        exec('lsof -t -i:8000 | xargs kill -9', () => {
-            const routerPath = path.join(kirbyPath, 'kirby', 'router.php');
-            phpServerProcess = spawn('/opt/homebrew/bin/php', ['-S', '127.0.0.1:8000', routerPath], {
-                cwd: kirbyPath,
-                stdio: 'inherit'
-            });
-
-            phpServerProcess.on('error', (err) => {
-                console.error('Fehler beim Starten des PHP Servers:', err);
-            });
-
-            setTimeout(resolve, 1100);
-        });
-    });
-
-const ensureKirbyReachable = async (kirbyPath) => {
+const ensureKirbyReachable = async () => {
     if (await isKirbyReachable()) {
         return;
     }
 
-    await startKirbyPhpServer(kirbyPath);
-    await delay(500);
-
-    if (await isKirbyReachable()) {
-        return;
-    }
-
-    throw new Error('Kirby Server ist nicht erreichbar. Bitte Server starten und erneut versuchen.');
+    throw new Error('Kirby Server ist nicht erreichbar. Bitte den Dev-Stack mit "npm run dev" starten und erneut versuchen.');
 };
 
 const buildStaticDeploySource = async ({ kirbyRoot, websiteUrl, targetPath }) => {
-    await ensureKirbyReachable(kirbyRoot);
+    await ensureKirbyReachable();
 
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'flatsite-static-'));
     const exportRoot = path.join(tempRoot, 'site-export');
@@ -1664,15 +1634,14 @@ app.get('/api/projects/current', (req, res) => {
 
 // ENDPOINT: START PHP SERVER (Kirby CMS)
 app.post('/api/start-kirby', async (req, res) => {
-    const kirbyPath = path.join(__dirname, 'kirby-cms');
-
-    if (!fs.existsSync(kirbyPath)) {
-        return res.status(404).json({ error: 'Der Ordner "kirby-cms" wurde nicht gefunden.' });
-    }
-
     try {
-        await startKirbyPhpServer(kirbyPath);
-        res.json({ success: true, message: 'Kirby Server erfolgreich auf Port 8000 gestartet.' });
+        if (await isKirbyReachable()) {
+            return res.json({ success: true, message: 'Kirby Server läuft bereits.' });
+        }
+        res.status(503).json({
+            success: false,
+            error: 'Kirby Server ist offline. Bitte den Dev-Stack mit "npm run dev" neu starten.'
+        });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message || 'Kirby Server konnte nicht gestartet werden' });
     }
