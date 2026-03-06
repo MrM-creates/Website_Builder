@@ -1211,6 +1211,18 @@ function App() {
     { label: 'Übersicht', state: 'editor' },
   ];
 
+  const completedSteps = {
+    welcome: projectName.trim().length > 0,
+    pages: pages.some((page) => page.selected && String(page.id || '').trim() && String(page.title || '').trim()),
+    design: Boolean(THEMES[selectedDesign]) && Boolean(THEME_COLORS[selectedDesign]?.[selectedColor]),
+    account:
+      ftpServer.trim().length > 0 &&
+      ftpUser.trim().length > 0 &&
+      String(ftpPassword || '').trim().length > 0 &&
+      String(ftpPort || '').trim().length > 0,
+    editor: step === 'editor' || setupDone || kirbyReady,
+  };
+
   /* ========================================================================
      RENDER
      ======================================================================== */
@@ -1253,12 +1265,35 @@ function App() {
                 }} style={{
                   color: isActive ? 'var(--text-primary)' : 'inherit',
                   fontWeight: isActive ? 600 : 400,
-                  cursor: 'pointer', opacity: isActive ? 1 : 0.6, transition: 'opacity 0.2s'
+                  cursor: 'pointer', opacity: isActive ? 1 : 0.6, transition: 'opacity 0.2s',
+                  display: 'inline-flex', alignItems: 'center', gap: '0.4rem'
                 }}
-                  onMouseOver={(e) => !isActive && (e.target.style.opacity = '1')}
-                  onMouseOut={(e) => !isActive && (e.target.style.opacity = '0.6')}
+                  onMouseOver={(e) => !isActive && (e.currentTarget.style.opacity = '1')}
+                  onMouseOut={(e) => !isActive && (e.currentTarget.style.opacity = '0.6')}
                 >
-                  {nav.label}
+                  <span>{nav.label}</span>
+                  {completedSteps[nav.state] && (
+                    <span
+                      aria-label={`${nav.label} erledigt`}
+                      title={`${nav.label} erledigt`}
+                      style={{
+                        width: '16px',
+                        height: '16px',
+                        borderRadius: '50%',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: 'rgba(140,198,63,0.18)',
+                        color: '#8cc63f',
+                        border: '1px solid rgba(140,198,63,0.4)',
+                        fontSize: '11px',
+                        lineHeight: 1,
+                        fontWeight: 700
+                      }}
+                    >
+                      ✓
+                    </span>
+                  )}
                 </span>
               );
             })}
