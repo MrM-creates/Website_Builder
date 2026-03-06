@@ -9,6 +9,7 @@
     "dev:bg:stop": "bash ./scripts/dev-bg-stop.sh",
     "dev:bg:status": "bash ./scripts/dev-bg-status.sh",
     "dev:bg:doctor": "bash ./scripts/dev-bg-doctor.sh",
+    "dev:bg:ensure": "bash ./scripts/dev-bg-ensure.sh",
     "dev:bg:logs": "bash ./scripts/dev-bg-logs.sh",
     "build": "vite build",
     "lint": "eslint .",

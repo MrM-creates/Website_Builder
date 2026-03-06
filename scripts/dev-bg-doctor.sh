@@ -7,5 +7,5 @@ bash "$ROOT/scripts/dev-bg-status.sh"
 
 echo ""
 echo "Doctor hint:"
-echo "- If one service is down: npm run dev:bg"
+echo "- If one service is down: npm run dev:bg:ensure"
 echo "- If ports are blocked:   npm run dev:bg:stop && npm run dev:bg"

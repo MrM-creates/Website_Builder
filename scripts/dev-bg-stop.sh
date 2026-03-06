@@ -17,6 +17,7 @@ stop_pid_file() {
     fi
     rm -f "$pid_file"
   fi
+  rm -f "$PID_DIR/${name}.pid.port"
 }
 
 for n in backend frontend kirby; do

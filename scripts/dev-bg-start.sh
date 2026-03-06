@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUNTIME_DIR="$ROOT/.runtime"
 LOG_DIR="$RUNTIME_DIR/logs"
 PID_DIR="$RUNTIME_DIR/pids"
+RUNNER="$ROOT/scripts/dev-bg-runner.sh"
 
 mkdir -p "$LOG_DIR" "$PID_DIR"
 
@@ -47,20 +48,8 @@ start_proc() {
   shift 2
   local log_file="$LOG_DIR/${name}.log"
   local pid_file="$PID_DIR/${name}.pid"
-
-  {
-    echo "[$(timestamp)] starting $name"
-  } >> "$log_file"
-
-  (
-    cd "$workdir"
-    if command -v setsid >/dev/null 2>&1; then
-      setsid "$@" >> "$log_file" 2>&1 < /dev/null &
-    else
-      nohup "$@" >> "$log_file" 2>&1 < /dev/null &
-    fi
-    echo $! > "$pid_file"
-  )
+  nohup "$RUNNER" "$name" "$log_file" "$workdir" "$@" >/dev/null 2>&1 &
+  echo $! > "$pid_file"
 }
 
 http_code() {
@@ -77,7 +66,7 @@ wait_for_http() {
   local name="$1"
   local url="$2"
   local accepted="$3"
-  local attempts="${4:-40}"
+  local attempts="${4:-80}"
   local sleep_s="${5:-0.25}"
 
   local i=0
@@ -115,15 +104,16 @@ wait_for_http "kirby" "http://127.0.0.1:8000/" "200 302" || all_ok=0
 backend_pid="$(lsof -ti tcp:3001 -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
 frontend_pid="$(lsof -ti tcp:5173 -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
 kirby_pid="$(lsof -ti tcp:8000 -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
-[[ -n "$backend_pid" ]] && echo "$backend_pid" > "$PID_DIR/backend.pid"
-[[ -n "$frontend_pid" ]] && echo "$frontend_pid" > "$PID_DIR/frontend.pid"
-[[ -n "$kirby_pid" ]] && echo "$kirby_pid" > "$PID_DIR/kirby.pid"
-
 echo ""
 if [[ "$all_ok" -ne 1 ]]; then
-  echo "Background dev stack failed health checks."
-  echo "Run: npm run dev:bg:logs"
-  exit 1
+  echo "Warning: one or more services failed initial health checks."
+  echo "The supervisor keeps retrying in background. Check logs if needed:"
+  echo "- Logs:   npm run dev:bg:logs"
+  echo "- Status: npm run dev:bg:status"
+else
+  [[ -n "$backend_pid" ]] && echo "$backend_pid" > "$PID_DIR/backend.pid.port"
+  [[ -n "$frontend_pid" ]] && echo "$frontend_pid" > "$PID_DIR/frontend.pid.port"
+  [[ -n "$kirby_pid" ]] && echo "$kirby_pid" > "$PID_DIR/kirby.pid.port"
 fi
 
 echo "Background dev stack started."

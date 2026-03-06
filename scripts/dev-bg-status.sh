@@ -8,18 +8,39 @@ print_proc() {
   local name="$1"
   local port="$2"
   local pid_file="$PID_DIR/${name}.pid"
+  local runner_pid=""
+  if [[ -f "$pid_file" ]]; then
+    runner_pid="$(cat "$pid_file" 2>/dev/null || true)"
+  fi
   local port_pid
   port_pid="$(lsof -ti tcp:"$port" -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
 
-  if [[ -n "$port_pid" ]]; then
-    echo "${name}: running (pid $port_pid, port $port)"
+  local runner_alive=0
+  if [[ -n "${runner_pid:-}" ]] && kill -0 "$runner_pid" 2>/dev/null; then
+    runner_alive=1
+  fi
+
+  if [[ "$runner_alive" -eq 1 && -n "$port_pid" ]]; then
+    echo "${name}: running (svc pid $port_pid, runner pid $runner_pid, port $port)"
+    return
+  fi
+
+  if [[ "$runner_alive" -eq 0 && -n "$port_pid" ]]; then
+    if [[ -f "$pid_file" ]]; then
+      echo "${name}: running unmanaged (svc pid $port_pid, stale runner pid ${runner_pid:-unknown})"
+    else
+      echo "${name}: running unmanaged (svc pid $port_pid, no runner pid file)"
+    fi
+    return
+  fi
+
+  if [[ "$runner_alive" -eq 1 && -z "$port_pid" ]]; then
+    echo "${name}: restarting/crashed (runner pid $runner_pid alive, port $port down)"
     return
   fi
 
   if [[ -f "$pid_file" ]]; then
-    local pid
-    pid="$(cat "$pid_file" 2>/dev/null || true)"
-    echo "${name}: stale pid file (${pid:-unknown}, port $port down)"
+    echo "${name}: stale pid file (${runner_pid:-unknown}, port $port down)"
     return
   fi
 
