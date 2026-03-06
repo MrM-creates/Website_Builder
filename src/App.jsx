@@ -755,6 +755,7 @@ function App() {
   };
 
   const computedWebsiteViewUrl = buildWebsiteViewUrl();
+  const localPreviewUrl = 'http://127.0.0.1:8000/';
   const websiteViewUrl =
     isLive && lastPublishedViewUrl
       ? lastPublishedViewUrl
@@ -862,6 +863,45 @@ function App() {
         colorText: color.text,
       }),
     });
+  };
+
+  const handleOpenLocalPreview = () => {
+    const initialUrl = `${localPreviewUrl}?preview=${Date.now()}`;
+    const previewTab = window.open('about:blank', '_blank');
+    if (!previewTab) {
+      // Popup blocked: fallback open without tab handle.
+      window.open(initialUrl, '_blank');
+      return;
+    }
+
+    const navigatePreview = (url) => {
+      try {
+        previewTab.location.replace(url);
+      } catch {
+        window.open(url, '_blank');
+      }
+    };
+
+    // Navigate immediately to avoid staying on about:blank.
+    navigatePreview(initialUrl);
+
+    (async () => {
+      try {
+        await fetch(`${BACKEND_URL}/api/start-kirby`, { method: 'POST' });
+      } catch {
+        // ignore, sync/open can still work if Kirby is already running
+      }
+
+      try {
+        await syncProjectStateToKirby();
+        const refreshedUrl = `${localPreviewUrl}?preview=${Date.now()}`;
+        if (!previewTab.closed) {
+          navigatePreview(refreshedUrl);
+        }
+      } catch (err) {
+        console.warn('Lokale Vorschau: Sync fehlgeschlagen:', err);
+      }
+    })();
   };
 
   const goToEditorWithSync = async () => {
@@ -1552,6 +1592,14 @@ function App() {
 
               {/* Right: Actions */}
               <div style={{ display: 'flex', gap: '0.8rem' }}>
+                <button
+                  className="btn-outline"
+                  style={{ padding: '0.5rem 1rem', fontSize: '0.8rem' }}
+                  onClick={handleOpenLocalPreview}
+                  title="Öffnet deine lokale Vorschau ohne Upload"
+                >
+                  Lokale Vorschau
+                </button>
                 <button
                   className="btn-outline"
                   style={{
