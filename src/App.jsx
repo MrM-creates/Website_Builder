@@ -1685,13 +1685,29 @@ function App() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+            <div style={{
+              display: 'flex',
+              flex: 1,
+              minHeight: 0,
+              gap: '0.9rem',
+              padding: '0.9rem 2rem 1rem',
+              alignItems: 'stretch'
+            }}>
               {/* Kirby Editor Iframe */}
-              <div style={{ flex: 1, minWidth: 0, display: 'flex' }}>
+              <div style={{
+                flex: 1,
+                minWidth: 0,
+                display: 'flex',
+                border: '1px solid var(--border-color)',
+                borderRadius: '12px',
+                overflow: 'hidden',
+                background: '#0f0f10',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.25)'
+              }}>
                 {kirbyReady ? (
                   <iframe
                     src={panelSrc}
-                    style={{ width: '100%', flex: 1, border: 'none', minHeight: '600px' }}
+                    style={{ width: '100%', flex: 1, border: 'none', minHeight: '600px', background: '#fff' }}
                     title="Kirby CMS Editor"
                   />
                 ) : (
@@ -1705,11 +1721,13 @@ function App() {
 
               {/* Footer block in editor context */}
               <aside style={{
-                width: '340px',
-                borderLeft: '1px solid var(--border-color)',
+                width: '320px',
                 background: 'var(--surface-color)',
                 padding: '1rem',
-                overflowY: 'auto'
+                overflowY: 'auto',
+                border: '1px solid var(--border-color)',
+                borderRadius: '12px',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.2)'
               }}>
                 <h3 style={{ margin: '0 0 0.35rem 0', fontSize: '1rem' }}>Footer</h3>
                 <p style={{ margin: '0 0 1rem 0', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
