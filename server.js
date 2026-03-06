@@ -1091,6 +1091,45 @@ const normalizeProjectPath = (value = '') => {
     return path.resolve(raw);
 };
 
+const AUTO_PROJECT_DIR_PATTERN = /^projekt-\d{8}-\d{6}(?:-\d+)?$/i;
+
+const normalizeProjectDirName = (value = '') => {
+    const transliterated = String(value ?? '')
+        .trim()
+        .toLowerCase()
+        .replace(/ä/g, 'ae')
+        .replace(/ö/g, 'oe')
+        .replace(/ü/g, 'ue')
+        .replace(/ß/g, 'ss')
+        .replace(/à|á|â|ã|å|ā/g, 'a')
+        .replace(/è|é|ê|ë|ē/g, 'e')
+        .replace(/ì|í|î|ï|ī/g, 'i')
+        .replace(/ò|ó|ô|õ|ø|ō/g, 'o')
+        .replace(/ù|ú|û|ū/g, 'u')
+        .replace(/ñ/g, 'n')
+        .replace(/ç/g, 'c');
+
+    return transliterated
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 64);
+};
+
+const uniqueSiblingPath = (parentDir, baseDirName) => {
+    let candidateName = baseDirName || 'projekt';
+    let counter = 2;
+    let candidatePath = path.join(parentDir, candidateName);
+
+    while (fs.existsSync(candidatePath)) {
+        candidateName = `${baseDirName}-${counter}`;
+        candidatePath = path.join(parentDir, candidateName);
+        counter += 1;
+    }
+
+    return candidatePath;
+};
+
 const PROJECT_META_DIR_NAME = 'flatsite-project';
 const LEGACY_PROJECT_META_DIR_NAME = '.flatsite-project';
 
@@ -1176,8 +1215,16 @@ const touchProjectInHistory = (manifest) => {
     const history = readProjectHistory();
     const normalizedPath = normalizeProjectPath(manifest.path);
     const now = new Date().toISOString();
+    const manifestId = String(manifest?.id || '').trim();
 
-    const filtered = history.projects.filter((entry) => normalizeProjectPath(entry.path) !== normalizedPath);
+    const filtered = history.projects.filter((entry) => {
+        if (manifestId && String(entry?.id || '').trim() === manifestId) return false;
+        try {
+            return normalizeProjectPath(entry.path) !== normalizedPath;
+        } catch {
+            return false;
+        }
+    });
     filtered.unshift({
         id: manifest.id,
         name: manifest.name,
@@ -1226,16 +1273,45 @@ const restoreStoredProjectToLive = (projectPath) => {
 };
 
 const saveProjectAtPath = (projectPathInput, statePayload = {}) => {
-    const projectPath = normalizeProjectPath(projectPathInput);
-    const metaDir = resolveProjectMetaDir(projectPath, { forWrite: true });
-    const previousManifest = readJsonFileOrNull(projectManifestPath(projectPath));
+    const initialProjectPath = normalizeProjectPath(projectPathInput);
+    let projectPath = initialProjectPath;
+    const previousManifest = readJsonFileOrNull(projectManifestPath(initialProjectPath));
     const now = new Date().toISOString();
 
     fs.mkdirSync(projectPath, { recursive: true });
-    fs.mkdirSync(metaDir, { recursive: true });
 
     const fallbackName = path.basename(projectPath) || 'Unbenanntes Projekt';
     const name = String(statePayload?.projectName || previousManifest?.name || fallbackName).trim() || fallbackName;
+
+    const currentDirName = path.basename(projectPath);
+    const shouldRenameAutoDir =
+        AUTO_PROJECT_DIR_PATTERN.test(currentDirName) &&
+        String(name || '').trim().length > 0;
+
+    if (shouldRenameAutoDir) {
+        const parentDir = path.dirname(projectPath);
+        const normalizedDirName = normalizeProjectDirName(name);
+        if (normalizedDirName && normalizedDirName !== currentDirName) {
+            const desiredPath = path.join(parentDir, normalizedDirName);
+            const nextPath =
+                fs.existsSync(desiredPath) && desiredPath !== projectPath
+                    ? uniqueSiblingPath(parentDir, normalizedDirName)
+                    : desiredPath;
+
+            if (nextPath !== projectPath) {
+                try {
+                    fs.renameSync(projectPath, nextPath);
+                    projectPath = nextPath;
+                } catch (error) {
+                    console.warn('Projektordner konnte nicht umbenannt werden:', error.message);
+                }
+            }
+        }
+    }
+
+    const metaDir = resolveProjectMetaDir(projectPath, { forWrite: true });
+    fs.mkdirSync(metaDir, { recursive: true });
+
     const manifest = {
         id: previousManifest?.id || projectIdFromPath(projectPath),
         name,

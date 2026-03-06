@@ -270,6 +270,7 @@ function App() {
   const [setupDone, setSetupDone] = useState(false);
   const [panelSrc, setPanelSrc] = useState('/panel/site');
   const [currentProjectId, setCurrentProjectId] = useState('');
+  const [currentProjectPath, setCurrentProjectPath] = useState('');
   const [projects, setProjects] = useState([]);
   const [showProjectList, setShowProjectList] = useState(false);
   const [showProviderGuide, setShowProviderGuide] = useState(false);
@@ -283,6 +284,7 @@ function App() {
   const editInputRef = useRef(null);
   const lastOnboardingSyncSignatureRef = useRef('');
   const isApplyingProjectStateRef = useRef(false);
+  const lastPersistedContentSignatureRef = useRef('');
 
   const collectProjectState = () => ({
     projectName: projectName.trim(),
@@ -450,6 +452,7 @@ function App() {
       const active = listed.find((project) => project.isActive);
       if (active?.id) {
         setCurrentProjectId(active.id);
+        setCurrentProjectPath(String(active.path || ''));
       }
     } catch {
       // ignore: project list is optional UI state
@@ -483,18 +486,26 @@ function App() {
     }
   };
 
-  const saveCurrentProject = async (projectIdOverride = '') => {
+  const saveCurrentProject = async (projectIdOverride = '', projectPathOverride = '') => {
     const projectId = projectIdOverride || currentProjectId;
-    if (!projectId) return;
+    const projectPath = String(projectPathOverride || currentProjectPath || '').trim();
+    if (!projectId && !projectPath) return;
 
-    await fetch(`${BACKEND_URL}/api/projects/save`, {
+    const res = await fetch(`${BACKEND_URL}/api/projects/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        projectId,
+        projectId: projectId || undefined,
+        projectPath: projectPath || undefined,
         state: collectProjectState(),
       }),
     });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.success || !data?.project?.id) {
+      throw new Error(data?.error || 'Projekt konnte nicht gespeichert werden');
+    }
+    setCurrentProjectId(String(data.project.id));
+    setCurrentProjectPath(String(data.project.path || projectPath));
   };
 
   const openExistingProject = async ({ projectId = '', projectPath = '' } = {}) => {
@@ -519,7 +530,15 @@ function App() {
       }
 
       setCurrentProjectId(data.project.id);
+      setCurrentProjectPath(String(data.project.path || ''));
       const loadedState = { ...(data.project.state || {}) };
+      const contentPages = await fetchPagesFromKirbyContent({ applyState: false });
+      if (contentPages.length) {
+        loadedState.pages = contentPages;
+      }
+      if (contentPages.length && !loadedState.setupDone) {
+        loadedState.setupDone = true;
+      }
       if (!String(loadedState.projectName || '').trim() && String(data.project?.name || '').trim()) {
         loadedState.projectName = String(data.project.name);
       }
@@ -655,6 +674,25 @@ function App() {
     return () => clearInterval(intervalId);
   }, [currentProjectId, step]);
 
+  useEffect(() => {
+    if (!currentProjectId || step !== 'editor' || !projectSignature) return;
+    if (lastPersistedContentSignatureRef.current === projectSignature) return;
+
+    const timer = setTimeout(() => {
+      saveCurrentProject()
+        .then(() => {
+          lastPersistedContentSignatureRef.current = projectSignature;
+        })
+        .catch(() => {});
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [currentProjectId, step, projectSignature]);
+
+  useEffect(() => {
+    lastPersistedContentSignatureRef.current = '';
+  }, [currentProjectId]);
+
   /* ---- Kirby Server & Auto-Login ---- */
   const startKirbyAndLogin = async () => {
     const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -714,6 +752,7 @@ function App() {
     setProjectError('');
     setShowProjectList(false);
     setCurrentProjectId('');
+    setCurrentProjectPath('');
     setProjectName('');
     setPages(DEFAULT_PAGES.map((p) => ({ ...p })));
     setNewPageName('');
@@ -806,6 +845,7 @@ function App() {
       }
 
       setCurrentProjectId(createData.project.id);
+      setCurrentProjectPath(String(createData.project.path || ''));
       await refreshProjects();
       setStep('config');
     } catch (err) {
@@ -1025,7 +1065,7 @@ function App() {
 
     setIsSettingUp(true);
     try {
-      await syncProjectStateToKirby();
+      await syncProjectStateToKirby({ syncPages: step === 'pages' });
       lastOnboardingSyncSignatureRef.current = currentSyncSignature;
       await saveCurrentProject();
     } catch (err) {
@@ -1040,7 +1080,7 @@ function App() {
   const handleHostingComplete = async () => {
     setIsSettingUp(true);
     try {
-      await syncProjectStateToKirby({ includeAccount: true });
+      await syncProjectStateToKirby({ includeAccount: true, syncPages: !setupDone });
       lastOnboardingSyncSignatureRef.current = buildOnboardingSyncSignature();
       await saveCurrentProject();
     } catch (err) {
@@ -1048,6 +1088,7 @@ function App() {
     }
     setIsSettingUp(false);
     setSetupDone(true);
+    setKirbyReady(false);
     setStep('editor');
   };
 
