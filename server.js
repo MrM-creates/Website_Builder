@@ -1065,6 +1065,22 @@ const writeUiConfig = (config = {}) => {
     writeJsonFile(STORAGE_CONFIG_FILE, config);
 };
 
+const getProjectPreferences = () => {
+    const uiConfig = readUiConfig();
+    const defaultRootRaw = String(uiConfig.defaultProjectsRoot || '').trim();
+    let defaultProjectsRoot = '';
+
+    if (defaultRootRaw) {
+        try {
+            defaultProjectsRoot = normalizeProjectPath(defaultRootRaw);
+        } catch {
+            defaultProjectsRoot = '';
+        }
+    }
+
+    return { defaultProjectsRoot };
+};
+
 const setActiveProjectPath = (projectPath) => {
     ensureFlatsiteDir();
     writeJsonFile(ACTIVE_PROJECT_FILE, { projectPath });
@@ -1245,7 +1261,11 @@ app.post('/api/system/pick-folder', express.json(), async (req, res) => {
     const prompt = String(req.body?.prompt || 'Wähle einen Ordner');
     const requestedInitial = String(req.body?.initialPath || '').trim();
     const uiConfig = readUiConfig();
-    let initialPath = requestedInitial || String(uiConfig.lastPickerPath || '').trim() || path.join(os.homedir(), 'Documents');
+    let initialPath =
+        requestedInitial ||
+        String(uiConfig.defaultProjectsRoot || '').trim() ||
+        String(uiConfig.lastPickerPath || '').trim() ||
+        path.join(os.homedir(), 'Documents');
 
     try {
         initialPath = normalizeProjectPath(initialPath);
@@ -1359,6 +1379,76 @@ if ($result -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $dialog.
 });
 
 // ENDPOINTS: PROJECT MANAGEMENT
+app.get('/api/projects/preferences', (req, res) => {
+    try {
+        const preferences = getProjectPreferences();
+        res.json({ success: true, preferences });
+    } catch (err) {
+        console.error('Fehler beim Laden der Projekt-Praeferenzen:', err);
+        res.status(500).json({ success: false, error: 'Projekt-Praeferenzen konnten nicht geladen werden' });
+    }
+});
+
+app.post('/api/projects/preferences', express.json(), (req, res) => {
+    try {
+        const uiConfig = readUiConfig();
+        const requested = String(req.body?.defaultProjectsRoot || '').trim();
+
+        if (!requested) {
+            writeUiConfig({
+                ...uiConfig,
+                defaultProjectsRoot: '',
+                lastPickerPath: String(uiConfig.lastPickerPath || '').trim()
+            });
+            return res.json({ success: true, preferences: { defaultProjectsRoot: '' } });
+        }
+
+        const normalized = normalizeProjectPath(requested);
+        fs.mkdirSync(normalized, { recursive: true });
+
+        writeUiConfig({
+            ...uiConfig,
+            defaultProjectsRoot: normalized,
+            lastPickerPath: normalized
+        });
+
+        res.json({ success: true, preferences: { defaultProjectsRoot: normalized } });
+    } catch (err) {
+        console.error('Fehler beim Speichern der Projekt-Praeferenzen:', err);
+        res.status(400).json({ success: false, error: err.message || 'Projekt-Praeferenzen konnten nicht gespeichert werden' });
+    }
+});
+
+app.post('/api/projects/allocate-path', express.json(), (req, res) => {
+    try {
+        const fallbackRoot = getProjectPreferences().defaultProjectsRoot;
+        const requestedRoot = String(req.body?.rootPath || '').trim() || fallbackRoot;
+        const rootPath = normalizeProjectPath(requestedRoot);
+        fs.mkdirSync(rootPath, { recursive: true });
+
+        const now = new Date();
+        const yyyy = String(now.getFullYear());
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const hh = String(now.getHours()).padStart(2, '0');
+        const min = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        const baseName = `projekt-${yyyy}${mm}${dd}-${hh}${min}${ss}`;
+
+        let suffix = 0;
+        let candidatePath = path.join(rootPath, baseName);
+        while (fs.existsSync(candidatePath)) {
+            suffix += 1;
+            candidatePath = path.join(rootPath, `${baseName}-${suffix}`);
+        }
+
+        res.json({ success: true, projectPath: candidatePath });
+    } catch (err) {
+        console.error('Fehler beim Reservieren eines Projektordners:', err);
+        res.status(400).json({ success: false, error: err.message || 'Projektordner konnte nicht vorbereitet werden' });
+    }
+});
+
 app.get('/api/projects/list', (req, res) => {
     try {
         const projects = listProjects();

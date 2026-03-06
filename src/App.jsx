@@ -274,6 +274,7 @@ function App() {
   const [showProjectList, setShowProjectList] = useState(false);
   const [showProviderGuide, setShowProviderGuide] = useState(false);
   const [showEditorActionsMenu, setShowEditorActionsMenu] = useState(false);
+  const [defaultProjectsRoot, setDefaultProjectsRoot] = useState('');
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [isOpeningProject, setIsOpeningProject] = useState(false);
   const [projectError, setProjectError] = useState('');
@@ -334,12 +335,15 @@ function App() {
     }, 0);
   };
 
-  const pickFolder = async (promptText) => {
+  const pickFolder = async (promptText, initialPath = '') => {
     try {
       const res = await fetch(`${BACKEND_URL}/api/system/pick-folder`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: promptText }),
+        body: JSON.stringify({
+          prompt: promptText,
+          initialPath: String(initialPath || '').trim() || undefined,
+        }),
       });
       const raw = await res.text();
       let data = null;
@@ -363,6 +367,72 @@ function App() {
       return String(data.path || '');
     } catch {
       setProjectError('Backend nicht erreichbar. Bitte App-Server neu starten und erneut versuchen.');
+      return '';
+    }
+  };
+
+  const fetchProjectPreferences = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/projects/preferences`);
+      const data = await res.json();
+      if (!res.ok || !data?.success) return;
+      setDefaultProjectsRoot(String(data?.preferences?.defaultProjectsRoot || ''));
+    } catch {
+      // ignore - preferences are optional
+    }
+  };
+
+  const saveDefaultProjectsRoot = async (pathValue = '') => {
+    const value = String(pathValue || '').trim();
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/projects/preferences`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ defaultProjectsRoot: value }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setProjectError(data?.error || 'Standard-Projektordner konnte nicht gespeichert werden');
+        return '';
+      }
+      const nextRoot = String(data?.preferences?.defaultProjectsRoot || '');
+      setDefaultProjectsRoot(nextRoot);
+      return nextRoot;
+    } catch {
+      setProjectError('Standard-Projektordner konnte nicht gespeichert werden');
+      return '';
+    }
+  };
+
+  const ensureDefaultProjectsRoot = async () => {
+    const existing = String(defaultProjectsRoot || '').trim();
+    if (existing) return existing;
+
+    const chosen = await pickFolder('Wähle deinen Standard-Projektordner');
+    if (!chosen) return '';
+
+    const saved = await saveDefaultProjectsRoot(chosen);
+    return saved || chosen;
+  };
+
+  const requestAllocatedProjectPath = async (rootPath) => {
+    const root = String(rootPath || '').trim();
+    if (!root) return '';
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/projects/allocate-path`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rootPath: root }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        setProjectError(data?.error || 'Neuer Projektordner konnte nicht erzeugt werden');
+        return '';
+      }
+      return String(data.projectPath || '');
+    } catch {
+      setProjectError('Neuer Projektordner konnte nicht erzeugt werden');
       return '';
     }
   };
@@ -488,6 +558,7 @@ function App() {
   useEffect(() => {
     fetchProjectSignature();
     refreshProjects();
+    fetchProjectPreferences();
   }, []);
 
   useEffect(() => {
@@ -711,10 +782,11 @@ function App() {
 
   const startNewProject = async () => {
     setProjectError('');
-    const chosenPath = await pickFolder('Wähle den Ordner für dein neues Projekt');
-    if (!chosenPath) {
-      return;
-    }
+    const baseRoot = await ensureDefaultProjectsRoot();
+    if (!baseRoot) return;
+
+    const chosenPath = await requestAllocatedProjectPath(baseRoot);
+    if (!chosenPath) return;
 
     await performStartNewProject(chosenPath);
   };
@@ -1264,7 +1336,7 @@ function App() {
                       style={{ padding: '0.45rem 0.8rem', fontSize: '0.78rem' }}
                       onClick={async () => {
                         setProjectError('');
-                        const chosenProjectFolder = await pickFolder('Wähle deinen Projektordner');
+                        const chosenProjectFolder = await pickFolder('Wähle deinen Projektordner', defaultProjectsRoot);
                         if (chosenProjectFolder) {
                           await openExistingProject({ projectPath: chosenProjectFolder });
                         }
