@@ -1,6 +1,24 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
+    <?php
+    $toRelativePath = function ($url) {
+        $raw = trim((string)($url ?? ''));
+        if ($raw === '') return '/';
+        if (str_starts_with($raw, '/')) return $raw;
+        $parts = parse_url($raw);
+        if ($parts === false) return $raw;
+        $path = $parts['path'] ?? '/';
+        if ($path === '') $path = '/';
+        if (isset($parts['query']) && $parts['query'] !== '') {
+            $path .= '?' . $parts['query'];
+        }
+        if (isset($parts['fragment']) && $parts['fragment'] !== '') {
+            $path .= '#' . $parts['fragment'];
+        }
+        return $path;
+    };
+    ?>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= $site->title() ?> — <?= $page->title() ?></title>
@@ -9,8 +27,8 @@
     <meta property="og:description" content="<?= $page->seodesc()->or($site->seodesc())->or('Website von ' . $site->title())->html() ?>">
     <meta property="og:url" content="<?= $page->url() ?>">
     <link rel="canonical" href="<?= $page->url() ?>">
-    <?= css("assets/style.css") ?>
-    <?= css("assets/css/custom.css") ?>
+    <link href="/assets/style.css" rel="stylesheet">
+    <link href="/assets/css/custom.css" rel="stylesheet">
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -40,7 +58,7 @@
 <body>
     <header class="site-header">
         <div class="logo">
-            <a href="<?= $site->url() ?>" style="display: block; text-align: center; line-height: 1.1; text-decoration: none; color: var(--color-accent);">
+            <a href="/" style="display: block; text-align: center; line-height: 1.1; text-decoration: none; color: var(--color-accent);">
                 <?= html($site->title()) ?>
             </a>
         </div>
@@ -48,7 +66,7 @@
             <button class="menu-toggle" aria-label="Menu öffnen"><span></span><span></span></button>
             <ul class="nav-links">
                 <?php foreach ($site->children()->listed() as $item): ?>
-                <li><a href="<?= $item->url() ?>" class="<?= $item->isOpen() ? 'active' : '' ?>"><?= $item->title() ?></a></li>
+                <li><a href="<?= $toRelativePath($item->url()) ?>" class="<?= $item->isOpen() ? 'active' : '' ?>"><?= $item->title() ?></a></li>
                 <?php endforeach ?>
             </ul>
         </nav>

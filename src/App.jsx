@@ -1085,6 +1085,9 @@ function App() {
     }
     let timeout = null;
     try {
+      // Persist current UI state first so design/footer changes survive crashes or failed deploys.
+      await saveCurrentProject();
+
       const color = getColor(selectedDesign, selectedColor);
       await fetch(`${BACKEND_URL}/api/update-theme`, {
         method: 'POST',

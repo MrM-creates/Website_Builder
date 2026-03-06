@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { Client } from 'basic-ftp';
 import SftpClient from 'ssh2-sftp-client';
+import { exec } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
