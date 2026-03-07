@@ -349,12 +349,17 @@ const humanizeSlug = (slug = '') =>
         .trim()
         .replace(/\b\w/g, (char) => char.toUpperCase());
 
+const MANAGED_LISTED_DIR_PATTERN = /^\d+_[a-z0-9-]+$/;
+
+const isManagedListedDirName = (value = '') =>
+    MANAGED_LISTED_DIR_PATTERN.test(String(value || '').trim());
+
 const listPagesForFlatsiteUi = (contentRoot) => {
     if (!fs.existsSync(contentRoot)) return [];
 
     const items = fs
         .readdirSync(contentRoot, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() && /^\d+_/.test(String(entry.name || '')))
+        .filter((entry) => entry.isDirectory() && isManagedListedDirName(entry.name))
         .map((entry, index) => {
             const rawName = String(entry.name || '').trim();
             if (!rawName || rawName.startsWith('.')) return null;
@@ -463,7 +468,8 @@ const syncPagesInContent = (contentRoot, rawPages = []) => {
         if (usedDirs.has(entry)) continue;
         if (renameFromSet.has(entry)) continue;
 
-        const baseSlug = sanitizeSlug(entry.replace(/^\d+_/, '')) || 'page';
+        const rawBase = entry.replace(/^\d+_/, '');
+        const baseSlug = sanitizeSlug(rawBase) || 'page';
         let candidate = `${baseSlug}-legacy`;
         while (blockedNames.has(candidate)) {
             legacyCounter += 1;

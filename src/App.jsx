@@ -377,6 +377,7 @@ function App() {
   const lastOnboardingSyncSignatureRef = useRef('');
   const isApplyingProjectStateRef = useRef(false);
   const lastPersistedContentSignatureRef = useRef('');
+  const isResettingProjectRef = useRef(false);
 
   const collectProjectState = () => ({
     projectName: projectName.trim(),
@@ -772,7 +773,7 @@ function App() {
   }, [step]);
 
   useEffect(() => {
-    if (!currentProjectId || step === 'welcome' || isApplyingProjectStateRef.current) {
+    if (!currentProjectId || step === 'welcome' || isApplyingProjectStateRef.current || isResettingProjectRef.current) {
       return;
     }
 
@@ -806,7 +807,7 @@ function App() {
   ]);
 
   useEffect(() => {
-    if (!currentProjectId || step !== 'editor') return;
+    if (!currentProjectId || step !== 'editor' || isResettingProjectRef.current) return;
 
     const intervalId = setInterval(() => {
       saveCurrentProject().catch(() => {});
@@ -816,7 +817,7 @@ function App() {
   }, [currentProjectId, step]);
 
   useEffect(() => {
-    if (!currentProjectId || step !== 'editor' || !projectSignature) return;
+    if (!currentProjectId || step !== 'editor' || !projectSignature || isResettingProjectRef.current) return;
     if (lastPersistedContentSignatureRef.current === projectSignature) return;
 
     const timer = setTimeout(() => {
@@ -870,6 +871,8 @@ function App() {
   };
 
   const performStartNewProject = async (projectPath) => {
+    isResettingProjectRef.current = true;
+
     if (currentProjectId) {
       try {
         await saveCurrentProject();
@@ -986,6 +989,8 @@ function App() {
     } catch (err) {
       console.error('Neues-Projekt-Reset fehlgeschlagen:', err);
       setProjectError('Projekt konnte im gewählten Ordner nicht gespeichert werden.');
+    } finally {
+      isResettingProjectRef.current = false;
     }
   };
 
