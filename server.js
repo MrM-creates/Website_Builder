@@ -1842,19 +1842,21 @@ app.post('/api/deploy', async (req, res) => {
 
 // ENDPOINT: UPDATE THEME VARIABLES (CSS Manipulation)
 app.post('/api/update-theme', (req, res) => {
-    const { font, colorPrimary, colorBg, colorText } = req.body;
+    const { font, fontHeading, fontBody, colorPrimary, colorBg, colorText } = req.body;
     const cssPath = path.join(__dirname, 'kirby-cms', 'assets', 'css', 'custom.css');
+    const resolvedBodyFont = fontBody || font || '"Inter", sans-serif';
+    const resolvedHeadingFont = fontHeading || font || '"Inter", sans-serif';
 
     // This simulates injecting Flatsite's choices into the Kirby Theme
     const cssContent = `:root {
   --color-primary: ${colorPrimary || '#000'};
   --color-background: ${colorBg || '#fff'};
   --color-text: ${colorText || '#000'};
-  --font-family: ${font || 'sans-serif'};
+  --font-family: ${resolvedBodyFont};
   --color-bg: var(--color-background);
   --color-accent: var(--color-primary);
-  --font-primary: var(--font-family);
-  --font-heading: var(--font-family);
+  --font-primary: ${resolvedBodyFont};
+  --font-heading: ${resolvedHeadingFont};
 }`;
 
     try {

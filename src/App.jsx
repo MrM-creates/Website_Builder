@@ -5,63 +5,67 @@ import './index.css';
    FLATSITE – Configuration Constants
    ========================================================================== */
 
-const THEMES = {
-  minimalist: {
-    name: 'Minimalist',
-    description: 'Clean, luftig und reduziert',
-    font: '"Inter", sans-serif',
-    previewClass: 'preview-minimalist',
-    themeClass: 'theme-minimalist',
-  },
+const DESIGN_STYLES = {
   brachial: {
     name: 'Brachial',
-    description: 'Laut, mutig und kontrastreich',
-    font: '"Inter", sans-serif',
+    description: 'Laut, kontrastreich, industriell',
     previewClass: 'preview-brachial',
     themeClass: 'theme-brachial',
   },
+  minimalist: {
+    name: 'Minimalist',
+    description: 'Ruhig, elegant, inhaltsfokussiert',
+    previewClass: 'preview-minimalist',
+    themeClass: 'theme-minimalist',
+  },
   modern: {
     name: 'Modern',
-    description: 'Gradient, weich und zeitgemäss',
-    font: '"Inter", sans-serif',
+    description: 'Clean, tech-affin, vertrauenswürdig',
     previewClass: 'preview-modern',
     themeClass: 'theme-modern',
   },
   classic: {
     name: 'Classic',
-    description: 'Elegant, zeitlos und seriös',
-    font: '"Playfair Display", serif',
+    description: 'Zeitlos, wertig, erzählend',
     previewClass: 'preview-classic',
     themeClass: 'theme-classic',
   },
 };
 
-// Per-Theme Farbschemas (3 Varianten pro Design)
-const THEME_COLORS = {
-  minimalist: [
-    { name: 'Monochrom', bg: '#fafafa', text: '#222', accent: '#000000' },
-    { name: 'Cool Gray', bg: '#f0f4f8', text: '#334155', accent: '#4facfe' },
-    { name: 'Warm Sand', bg: '#fdf8f0', text: '#3d3027', accent: '#c49a6c' },
-  ],
+// 4x4 curated vibe matrix (fixed font/color bundles)
+const DESIGN_VIBES = {
   brachial: [
-    { name: 'Schwarz/Weiss', bg: '#000000', text: '#ffffff', accent: '#ffffff' },
-    { name: 'Feuerrot', bg: '#0a0000', text: '#ffffff', accent: '#ff2d2d' },
-    { name: 'Neon Grün', bg: '#050505', text: '#ffffff', accent: '#39ff14' },
+    { id: 'B-01', label: 'Lass es knallen?', headingFont: '"Inter Tight", sans-serif', bodyFont: '"Inter", sans-serif', bg: '#1A1A1A', text: '#FFFFFF', accent: '#EEFF00' },
+    { id: 'B-02', label: 'Etwas technischer?', headingFont: '"Inter Tight", sans-serif', bodyFont: '"Inter", sans-serif', bg: '#0D0D0D', text: '#FFFFFF', accent: '#00FFFF' },
+    { id: 'B-03', label: 'Radikal reduziert?', headingFont: '"Inter Tight", sans-serif', bodyFont: '"Inter", sans-serif', bg: '#000000', text: '#FFFFFF', accent: '#FFFFFF' },
+    { id: 'B-04', label: 'Mehr Gefahr?', headingFont: '"Inter Tight", sans-serif', bodyFont: '"Inter", sans-serif', bg: '#1A1A1A', text: '#FFFFFF', accent: '#FF4500' },
+  ],
+  minimalist: [
+    { id: 'M-01', label: 'Schön entspannt?', headingFont: '"Playfair Display", serif', bodyFont: '"Source Sans 3", sans-serif', bg: '#F9F9F7', text: '#2C2C2C', accent: '#8A9A8A' },
+    { id: 'M-02', label: 'Ein Hauch von Luxus?', headingFont: '"Playfair Display", serif', bodyFont: '"Source Sans 3", sans-serif', bg: '#001F3F', text: '#FFFFFF', accent: '#D4AF37' },
+    { id: 'M-03', label: 'Galerie-Feeling?', headingFont: '"Playfair Display", serif', bodyFont: '"Source Sans 3", sans-serif', bg: '#FFFFFF', text: '#000000', accent: '#E0E0E0' },
+    { id: 'M-04', label: 'Warm & Erdig?', headingFont: '"Playfair Display", serif', bodyFont: '"Source Sans 3", sans-serif', bg: '#F2E8DF', text: '#3D2B1F', accent: '#BDB76B' },
   ],
   modern: [
-    { name: 'Ocean Blue', bg: '#fdfbfb', text: '#333', accent: '#4facfe' },
-    { name: 'Sunset', bg: '#fff5f5', text: '#333', accent: '#ff6b6b' },
-    { name: 'Aurora', bg: '#f0fdf4', text: '#1a3a2a', accent: '#22c55e' },
+    { id: 'D-01', label: 'Schön professionell?', headingFont: '"Plus Jakarta Sans", sans-serif', bodyFont: '"Roboto", sans-serif', bg: '#FFFFFF', text: '#001F3F', accent: '#007AFF' },
+    { id: 'D-02', label: 'Eher Dark Mode?', headingFont: '"Plus Jakarta Sans", sans-serif', bodyFont: '"Roboto", sans-serif', bg: '#121212', text: '#F0F0F0', accent: '#BB86FC' },
+    { id: 'D-03', label: 'Mut zur Farbe?', headingFont: '"Plus Jakarta Sans", sans-serif', bodyFont: '"Roboto", sans-serif', bg: '#FFFFFF', text: '#2D3436', accent: '#6C5CE7' },
+    { id: 'D-04', label: 'Radikal aufgeräumt?', headingFont: '"Plus Jakarta Sans", sans-serif', bodyFont: '"Roboto", sans-serif', bg: '#F5F5F7', text: '#1D1D1F', accent: '#8E8E93' },
   ],
   classic: [
-    { name: 'Elfenbein', bg: '#fdfbf7', text: '#2b2b2b', accent: '#8b7355' },
-    { name: 'Bordeaux', bg: '#faf5f5', text: '#2b1515', accent: '#8b1a1a' },
-    { name: 'Navy Gold', bg: '#f5f5fa', text: '#1a1a3a', accent: '#b8860b' },
+    { id: 'C-01', label: 'Wie ein Magazin?', headingFont: '"Libre Baskerville", serif', bodyFont: '"Lora", serif', bg: '#F2E8DF', text: '#3D2B1F', accent: '#BF4F26' },
+    { id: 'C-02', label: 'Ein Hauch Geschichte?', headingFont: '"Libre Baskerville", serif', bodyFont: '"Lora", serif', bg: '#F0F4F0', text: '#1B3022', accent: '#2D5A27' },
+    { id: 'C-03', label: 'Sehr seriös?', headingFont: '"Libre Baskerville", serif', bodyFont: '"Lora", serif', bg: '#FFFFFF', text: '#002366', accent: '#C5B358' },
+    { id: 'C-04', label: 'Vintage-Charme?', headingFont: '"Libre Baskerville", serif', bodyFont: '"Lora", serif', bg: '#FAF3E0', text: '#5D4037', accent: '#8D6E63' },
   ],
 };
 
-// Helper to get the current color
-const getColor = (design, colorIndex) => THEME_COLORS[design]?.[colorIndex] || THEME_COLORS.minimalist[0];
+const getVibesForStyle = (styleKey) => DESIGN_VIBES[styleKey] || [];
+const getDefaultVibeForStyle = (styleKey) => getVibesForStyle(styleKey)[0] || null;
+const getSelectedVibe = (styleKey, vibeId) =>
+  getVibesForStyle(styleKey).find((v) => v.id === vibeId) || getDefaultVibeForStyle(styleKey);
+const getVibeByLegacyIndex = (styleKey, legacyIndex = 0) =>
+  getVibesForStyle(styleKey)[Number(legacyIndex) || 0] || getDefaultVibeForStyle(styleKey);
 const normalizeWebsiteUrlInput = (value = '') => {
   const raw = String(value ?? '').trim();
   if (!raw) return '';
@@ -180,40 +184,45 @@ const mapDeployErrorToUserMessage = (raw = '') => {
    FLATSITE – Mini Website Preview Component
    ========================================================================== */
 
-function MiniSitePreview({ themeKey, colorIndex }) {
-  const theme = THEMES[themeKey];
-  const color = getColor(themeKey, colorIndex);
-  const isDark = color.bg.toLowerCase() < '#888';
+function MiniSitePreview({ styleKey, vibe }) {
+  const style = DESIGN_STYLES[styleKey];
+  const color = vibe || getDefaultVibeForStyle(styleKey);
+  const isDark = color?.bg?.toLowerCase() < '#888';
   const navBorder = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)';
   const heroImgBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
   return (
-    <div className={`mini-site-preview ${theme.previewClass}`} style={{
+    <div className={`mini-site-preview ${style?.previewClass || ''}`} style={{
       borderRadius: '8px', overflow: 'hidden', aspectRatio: '16/10',
       border: '1px solid var(--border-color)',
-      background: color.bg, color: color.text
+      background: color?.bg || '#fff',
+      color: color?.text || '#111',
+      fontFamily: color?.bodyFont || '"Inter", sans-serif',
+      transition: 'background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease'
     }}>
       {/* Mini Nav */}
       <div className="ms-nav" style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         padding: '8px 12px', fontSize: '7px', borderBottom: `1px solid ${navBorder}`
       }}>
-        <div className="ms-logo" style={{ fontWeight: 'bold', fontSize: '8px', color: color.text }}>Logo</div>
+        <div className="ms-logo" style={{ fontWeight: 'bold', fontSize: '8px', color: color?.text || '#111', fontFamily: color?.headingFont }}>
+          Logo
+        </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <div style={{ width: '20px', height: '3px', background: color.text, opacity: 0.4, borderRadius: '2px' }}></div>
-          <div style={{ width: '20px', height: '3px', background: color.text, opacity: 0.4, borderRadius: '2px' }}></div>
-          <div style={{ width: '20px', height: '3px', background: color.text, opacity: 0.4, borderRadius: '2px' }}></div>
+          <div style={{ width: '20px', height: '3px', background: color?.text || '#111', opacity: 0.4, borderRadius: '2px' }}></div>
+          <div style={{ width: '20px', height: '3px', background: color?.text || '#111', opacity: 0.4, borderRadius: '2px' }}></div>
+          <div style={{ width: '20px', height: '3px', background: color?.text || '#111', opacity: 0.4, borderRadius: '2px' }}></div>
         </div>
       </div>
       {/* Mini Hero Section */}
       <div className="ms-hero" style={{ display: 'flex', gap: '8px', padding: '10px 12px', flex: 1 }}>
         <div className="ms-hero-text" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '4px' }}>
-          <div className="ms-title" style={{ width: '70%', height: '10px', background: color.text, opacity: 0.8, borderRadius: '2px' }}></div>
-          <div className="ms-subtitle" style={{ width: '50%', height: '5px', background: color.text, opacity: 0.3, borderRadius: '2px' }}></div>
+          <div className="ms-title" style={{ width: '70%', height: '10px', background: color?.text || '#111', opacity: 0.8, borderRadius: '2px' }}></div>
+          <div className="ms-subtitle" style={{ width: '50%', height: '5px', background: color?.text || '#111', opacity: 0.3, borderRadius: '2px' }}></div>
         </div>
         <div className="ms-hero-img" style={{ flex: 1, background: heroImgBg, borderRadius: '4px' }}></div>
       </div>
       {/* Color accent bar */}
-      <div style={{ height: '4px', background: color.accent, marginTop: 'auto' }}></div>
+      <div style={{ height: '4px', background: color?.accent || '#000', marginTop: 'auto' }}></div>
     </div>
   );
 }
@@ -222,37 +231,42 @@ function MiniSitePreview({ themeKey, colorIndex }) {
    FLATSITE – Live Preview Component (Full-size)
    ========================================================================== */
 
-function LivePreview({ themeKey, colorIndex, projectName }) {
-  const theme = THEMES[themeKey];
-  const color = getColor(themeKey, colorIndex);
-  const isDark = color.bg.toLowerCase() < '#888';
+function LivePreview({ styleKey, vibe, projectName }) {
+  const style = DESIGN_STYLES[styleKey];
+  const color = vibe || getDefaultVibeForStyle(styleKey);
+  const isDark = color?.bg?.toLowerCase() < '#888';
   const subtleText = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)';
   const cardBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
   const heroBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
-  const navBorder = isDark ? `2px solid ${color.accent}` : `1px solid rgba(0,0,0,0.08)`;
+  const navBorder = isDark ? `2px solid ${color?.accent || '#fff'}` : `1px solid rgba(0,0,0,0.08)`;
   return (
-    <div className={`live-preview-container ${theme.themeClass}`} style={{
+    <div className={`live-preview-container ${style?.themeClass || ''}`} style={{
       borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)',
-      minHeight: '300px', background: color.bg, color: color.text
+      minHeight: '300px',
+      background: color?.bg || '#fff',
+      color: color?.text || '#111',
+      fontFamily: color?.bodyFont || '"Inter", sans-serif',
+      transition: 'background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease'
     }}>
       {/* Navigation */}
       <div className="lp-nav" style={{ borderBottom: navBorder }}>
-        <div className="lp-logo" style={{ color: color.accent }}>{projectName || 'Mein Portfolio'}</div>
+        <div className="lp-logo" style={{ color: color?.accent || '#000', fontFamily: color?.headingFont }}>{projectName || 'Mein Portfolio'}</div>
         <div className="lp-links">
-          <span className="lp-link" style={{ color: color.text }}>Portfolio</span>
-          <span className="lp-link" style={{ color: color.text }}>Über mich</span>
-          <span className="lp-link" style={{ color: color.text }}>Kontakt</span>
+          <span className="lp-link" style={{ color: color?.text || '#111', fontFamily: color?.bodyFont }}>Portfolio</span>
+          <span className="lp-link" style={{ color: color?.text || '#111', fontFamily: color?.bodyFont }}>Über mich</span>
+          <span className="lp-link" style={{ color: color?.text || '#111', fontFamily: color?.bodyFont }}>Kontakt</span>
         </div>
       </div>
       {/* Hero */}
       <div className="lp-main">
         <div className="lp-hero">
           <div className="lp-hero-content">
-            <h1 className="lp-h1" style={{ color: color.text }}>Willkommen</h1>
-            <p className="lp-p" style={{ color: subtleText }}>Entdecke meine Arbeiten und lass dich inspirieren.</p>
+            <h1 className="lp-h1" style={{ color: color?.text || '#111', fontFamily: color?.headingFont }}>Willkommen</h1>
+            <p className="lp-p" style={{ color: subtleText, fontFamily: color?.bodyFont }}>Entdecke meine Arbeiten und lass dich inspirieren.</p>
             <button className="lp-btn" style={{
-              borderColor: color.accent, color: isDark ? color.bg : '#fff',
-              background: color.accent,
+              borderColor: color?.accent || '#000', color: isDark ? (color?.bg || '#111') : '#fff',
+              background: color?.accent || '#000',
+              transition: 'all 0.3s ease',
             }}>Mehr erfahren</button>
           </div>
           <div className="lp-hero-image" style={{ minHeight: '200px', background: heroBg, color: subtleText }}>
@@ -267,6 +281,32 @@ function LivePreview({ themeKey, colorIndex, projectName }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function HelpBadgeIcon({ label = 'Hilfe' }) {
+  return (
+    <span
+      aria-hidden="true"
+      title={label}
+      style={{
+        display: 'inline-flex',
+        width: '18px',
+        height: '18px',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: '50%',
+        border: '1px solid rgba(79,172,254,0.45)',
+        background: 'rgba(79,172,254,0.14)',
+        color: '#7dc6ff',
+        fontSize: '0.72rem',
+        fontWeight: 700,
+        lineHeight: 1,
+        flexShrink: 0
+      }}
+    >
+      ?
+    </span>
   );
 }
 
@@ -291,7 +331,7 @@ function App() {
 
   // Design
   const [selectedDesign, setSelectedDesign] = useState('minimalist');
-  const [selectedColor, setSelectedColor] = useState(0);
+  const [selectedVibeId, setSelectedVibeId] = useState(getDefaultVibeForStyle('minimalist')?.id || 'M-01');
 
   // Hosting
   const [hostingProvider, setHostingProvider] = useState(TEST_HOSTING_DEFAULTS.hostingProvider);
@@ -342,7 +382,7 @@ function App() {
     projectName: projectName.trim(),
     pages,
     selectedDesign,
-    selectedColor,
+    selectedVibeId,
     hostingProvider,
     connectionType,
     ftpServer,
@@ -365,8 +405,11 @@ function App() {
 
     setProjectName(String(state.projectName || ''));
     setPages(Array.isArray(state.pages) && state.pages.length ? state.pages : DEFAULT_PAGES.map((p) => ({ ...p })));
-    setSelectedDesign(state.selectedDesign || 'minimalist');
-    setSelectedColor(Number.isFinite(state.selectedColor) ? state.selectedColor : 0);
+    const resolvedDesign = String(state.selectedDesign || 'minimalist');
+    const fallbackVibe = getVibeByLegacyIndex(resolvedDesign, state.selectedColor);
+    const resolvedVibeId = String(state.selectedVibeId || fallbackVibe?.id || getDefaultVibeForStyle(resolvedDesign)?.id || '');
+    setSelectedDesign(resolvedDesign);
+    setSelectedVibeId(resolvedVibeId);
     const resolvedPort = String(state.ftpPort ?? TEST_HOSTING_DEFAULTS.ftpPort);
     const resolvedConnectionType = String(state.connectionType || inferConnectionTypeFromPort(resolvedPort));
     setHostingProvider(String(state.hostingProvider || TEST_HOSTING_DEFAULTS.hostingProvider));
@@ -744,7 +787,7 @@ function App() {
     projectName,
     pages,
     selectedDesign,
-    selectedColor,
+    selectedVibeId,
     hostingProvider,
     connectionType,
     ftpServer,
@@ -847,7 +890,7 @@ function App() {
     setDragIndex(null);
     setDragOverIndex(null);
     setSelectedDesign('minimalist');
-    setSelectedColor(0);
+    setSelectedVibeId(getDefaultVibeForStyle('minimalist')?.id || 'M-01');
     setHostingProvider(TEST_HOSTING_DEFAULTS.hostingProvider);
     setConnectionType(TEST_HOSTING_DEFAULTS.connectionType);
     setFooterLine1('');
@@ -887,16 +930,18 @@ function App() {
       });
 
       const defaultDesignKey = 'minimalist';
-      const defaultColor = getColor(defaultDesignKey, 0);
+      const defaultVibe = getDefaultVibeForStyle(defaultDesignKey);
       await fetch(`${BACKEND_URL}/api/update-theme`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           design: defaultDesignKey,
-          font: THEMES[defaultDesignKey].font,
-          colorPrimary: defaultColor.accent,
-          colorBg: defaultColor.bg,
-          colorText: defaultColor.text,
+          vibeId: defaultVibe?.id,
+          fontHeading: defaultVibe?.headingFont,
+          fontBody: defaultVibe?.bodyFont,
+          colorPrimary: defaultVibe?.accent,
+          colorBg: defaultVibe?.bg,
+          colorText: defaultVibe?.text,
         }),
       });
 
@@ -909,7 +954,7 @@ function App() {
             projectName: '',
             pages: DEFAULT_PAGES.map((p) => ({ ...p })),
             selectedDesign: 'minimalist',
-            selectedColor: 0,
+            selectedVibeId: getDefaultVibeForStyle('minimalist')?.id || 'M-01',
             hostingProvider: TEST_HOSTING_DEFAULTS.hostingProvider,
             connectionType: TEST_HOSTING_DEFAULTS.connectionType,
             ftpServer: TEST_HOSTING_DEFAULTS.ftpServer,
@@ -1028,7 +1073,7 @@ function App() {
     JSON.stringify({
       projectName: projectName.trim(),
       pages: pages.map((p) => ({ id: p.id, title: p.title, selected: p.selected })),
-      design: { selectedDesign, selectedColor },
+      design: { selectedDesign, selectedVibeId },
       contentSignature: signatureValue || '',
       footer: {
         footerLine1: footerLine1.trim(),
@@ -1059,7 +1104,7 @@ function App() {
     JSON.stringify({
       projectName: projectName.trim(),
       pages: pages.map((p) => ({ id: p.id, title: p.title, selected: p.selected })),
-      design: { selectedDesign, selectedColor },
+      design: { selectedDesign, selectedVibeId },
       footer: {
         footerLine1: footerLine1.trim(),
         footerLine2: footerLine2.trim(),
@@ -1099,16 +1144,18 @@ function App() {
       });
     }
 
-    const color = getColor(selectedDesign, selectedColor);
+    const vibe = getSelectedVibe(selectedDesign, selectedVibeId);
     await fetch(`${BACKEND_URL}/api/update-theme`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         design: selectedDesign,
-        font: THEMES[selectedDesign].font,
-        colorPrimary: color.accent,
-        colorBg: color.bg,
-        colorText: color.text,
+        vibeId: vibe?.id,
+        fontHeading: vibe?.headingFont,
+        fontBody: vibe?.bodyFont,
+        colorPrimary: vibe?.accent,
+        colorBg: vibe?.bg,
+        colorText: vibe?.text,
       }),
     });
   };
@@ -1197,16 +1244,18 @@ function App() {
       // Persist current UI state first so design/footer changes survive crashes or failed deploys.
       await saveCurrentProject();
 
-      const color = getColor(selectedDesign, selectedColor);
+      const vibe = getSelectedVibe(selectedDesign, selectedVibeId);
       await fetch(`${BACKEND_URL}/api/update-theme`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           design: selectedDesign,
-          font: THEMES[selectedDesign].font,
-          colorPrimary: color.accent,
-          colorBg: color.bg,
-          colorText: color.text,
+          vibeId: vibe?.id,
+          fontHeading: vibe?.headingFont,
+          fontBody: vibe?.bodyFont,
+          colorPrimary: vibe?.accent,
+          colorBg: vibe?.bg,
+          colorText: vibe?.text,
         }),
       });
 
@@ -1349,10 +1398,19 @@ function App() {
     { label: 'Übersicht', state: 'editor' },
   ];
 
+  const activeVibe = getSelectedVibe(selectedDesign, selectedVibeId);
+  const activeStyleVibes = getVibesForStyle(selectedDesign);
+
+  const handleDesignStyleChange = (styleKey) => {
+    const fallbackVibe = getDefaultVibeForStyle(styleKey);
+    setSelectedDesign(styleKey);
+    setSelectedVibeId(fallbackVibe?.id || '');
+  };
+
   const completedSteps = {
     welcome: projectName.trim().length > 0,
     pages: pages.some((page) => page.selected && String(page.id || '').trim() && String(page.title || '').trim()),
-    design: Boolean(THEMES[selectedDesign]) && Boolean(THEME_COLORS[selectedDesign]?.[selectedColor]),
+    design: Boolean(DESIGN_STYLES[selectedDesign]) && Boolean(activeVibe?.id),
     account:
       ftpServer.trim().length > 0 &&
       ftpUser.trim().length > 0 &&
@@ -1743,57 +1801,73 @@ function App() {
           <div className="fade-in" style={{ maxWidth: '1000px', width: '100%', padding: '2rem' }}>
             <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem', textAlign: 'center' }}>Dein Stil</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '3rem', textAlign: 'center' }}>
-              Wähle einen Look, der zu dir passt. Schrift, Layout und Farben ändern sich sofort.
+              Wähle einen Grundstil und dann eine Vibe-Karte. Du siehst sofort ein fertiges Design.
             </p>
 
             {/* Theme Grid with Visual Previews */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem', marginBottom: '3rem' }}>
-              {Object.entries(THEMES).map(([key, theme]) => (
-                <div key={key} onClick={() => setSelectedDesign(key)} className="theme-card" style={{
+              {Object.entries(DESIGN_STYLES).map(([key, style]) => {
+                const previewVibe = key === selectedDesign ? activeVibe : getDefaultVibeForStyle(key);
+                return (
+                <div key={key} onClick={() => handleDesignStyleChange(key)} className="theme-card" style={{
                   cursor: 'pointer', background: 'var(--surface-color)', padding: '1rem', borderRadius: '12px',
                   border: selectedDesign === key ? '2px solid #4facfe' : '1px solid var(--border-color)',
                   transition: 'all 0.2s', boxShadow: selectedDesign === key ? '0 0 20px rgba(79,172,254,0.15)' : 'none'
                 }}>
                   {/* Visual Preview */}
-                  <MiniSitePreview themeKey={key} colorIndex={key === selectedDesign ? selectedColor : 0} />
+                  <MiniSitePreview styleKey={key} vibe={previewVibe} />
                   {/* Theme Info */}
                   <div style={{ marginTop: '0.8rem', textAlign: 'center' }}>
                     <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.2rem' }}>
-                      {theme.name}
+                      {style.name}
                     </div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                      {theme.description}
+                      {style.description}
                     </div>
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
 
-            {/* Color Variants (per theme) */}
-            <h3 style={{ fontSize: '1.3rem', marginBottom: '1.5rem', textAlign: 'center' }}>Farbvariante für {THEMES[selectedDesign].name}</h3>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '2rem', marginBottom: '3rem' }}>
-              {THEME_COLORS[selectedDesign].map((color, idx) => (
-                <div key={idx} onClick={() => setSelectedColor(idx)} style={{
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.8rem', cursor: 'pointer'
-                }}>
-                  <div style={{
-                    width: '60px', height: '60px', borderRadius: '50%', background: color.bg,
-                    border: selectedColor === idx ? `3px solid ${color.accent}` : '2px solid var(--border-color)',
-                    boxShadow: selectedColor === idx ? `0 0 15px ${color.accent}40` : 'none',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s'
-                  }}>
-                    <div style={{ width: '20px', height: '20px', borderRadius: '50%', background: color.accent }}></div>
+            {/* Vibe cards (4 per style) */}
+            <h3 style={{ fontSize: '1.3rem', marginBottom: '1rem', textAlign: 'center' }}>
+              Wie soll es sich anfühlen? ({DESIGN_STYLES[selectedDesign]?.name})
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.9rem', marginBottom: '3rem' }}>
+              {activeStyleVibes.map((vibe) => (
+                <button
+                  key={vibe.id}
+                  type="button"
+                  onClick={() => setSelectedVibeId(vibe.id)}
+                  style={{
+                    textAlign: 'left',
+                    borderRadius: '10px',
+                    border: selectedVibeId === vibe.id ? `2px solid ${vibe.accent}` : '1px solid var(--border-color)',
+                    background: selectedVibeId === vibe.id ? 'rgba(79,172,254,0.08)' : 'var(--surface-color)',
+                    padding: '0.85rem 0.9rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.55rem' }}>
+                    <span style={{ fontSize: '0.86rem', color: 'var(--text-secondary)' }}>{vibe.id}</span>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: vibe.accent, display: 'inline-block' }}></span>
                   </div>
-                  <span style={{ fontSize: '0.85rem', color: selectedColor === idx ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
-                    {color.name}
-                  </span>
-                </div>
+                  <div style={{ fontSize: '0.95rem', color: 'var(--text-primary)', fontWeight: 600, marginBottom: '0.55rem' }}>
+                    {vibe.label}
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.45rem' }}>
+                    <span style={{ width: '16px', height: '16px', borderRadius: '4px', background: vibe.bg, border: '1px solid rgba(255,255,255,0.2)' }}></span>
+                    <span style={{ width: '16px', height: '16px', borderRadius: '4px', background: vibe.text, border: '1px solid rgba(255,255,255,0.2)' }}></span>
+                    <span style={{ width: '16px', height: '16px', borderRadius: '4px', background: vibe.accent, border: '1px solid rgba(255,255,255,0.2)' }}></span>
+                  </div>
+                </button>
               ))}
             </div>
 
             {/* Full-Size Live Preview */}
             <h3 style={{ fontSize: '1.3rem', marginBottom: '1rem', textAlign: 'center' }}>Vorschau</h3>
-            <LivePreview themeKey={selectedDesign} colorIndex={selectedColor} projectName={projectName} />
+            <LivePreview styleKey={selectedDesign} vibe={activeVibe} projectName={projectName} />
 
             <div style={{ display: 'flex', justifyContent: 'center', marginTop: '3rem' }}>
               <button className="btn-primary" style={{ padding: '1rem 3rem' }}
@@ -1841,7 +1915,10 @@ function App() {
                   justifyContent: 'space-between'
                 }}
               >
-                <span>Warum brauche ich Hosting?</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.55rem' }}>
+                  <HelpBadgeIcon label="Warum brauche ich Hosting?" />
+                  <span>Warum brauche ich Hosting?</span>
+                </span>
                 <span style={{ opacity: 0.7 }}>{showHostingWhy ? '−' : '+'}</span>
               </button>
               {showHostingWhy && (
@@ -1876,9 +1953,10 @@ function App() {
             <button
               type="button"
               className="btn-outline"
-              style={{ marginBottom: '1rem', fontSize: '0.82rem', padding: '0.45rem 0.8rem' }}
+              style={{ marginBottom: '1rem', fontSize: '0.82rem', padding: '0.45rem 0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
               onClick={() => setShowProviderGuide(true)}
             >
+              <HelpBadgeIcon label="Provider-Hilfe" />
               Du weißt nicht, wo du diese Daten findest?
             </button>
 
@@ -1935,7 +2013,7 @@ function App() {
             }}>
               {/* Left: compact design info */}
               <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                Design: {THEMES[selectedDesign]?.name} · {getColor(selectedDesign, selectedColor)?.name}
+                Design: {DESIGN_STYLES[selectedDesign]?.name} · {activeVibe?.id} · {activeVibe?.label}
               </div>
 
               {/* Right: Actions */}
@@ -2130,9 +2208,10 @@ function App() {
             <button
               type="button"
               className="btn-outline"
-              style={{ marginTop: '-1.2rem', marginBottom: '1.2rem', fontSize: '0.82rem', padding: '0.45rem 0.8rem' }}
+              style={{ marginTop: '-1.2rem', marginBottom: '1.2rem', fontSize: '0.82rem', padding: '0.45rem 0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
               onClick={() => setShowProviderGuide(true)}
             >
+              <HelpBadgeIcon label="Provider-Hilfe" />
               Du weißt nicht, wo du diese Daten findest?
             </button>
 
@@ -2316,7 +2395,10 @@ function App() {
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Provider-Anleitungen</h3>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', display: 'inline-flex', alignItems: 'center', gap: '0.55rem' }}>
+                <HelpBadgeIcon label="Provider-Anleitungen" />
+                <span>Provider-Anleitungen</span>
+              </h3>
               <button
                 className="btn-outline"
                 style={{ padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
