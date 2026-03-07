@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "npm run dev:bg:stop && concurrently --restart-tries 10 --restart-after 1500 -n \"backend,frontend,kirby\" -c \"magenta,cyan,blue\" \"node server.js\" \"vite --host 127.0.0.1 --strictPort\" \"cd kirby-cms && /opt/homebrew/bin/php -S 127.0.0.1:8000 kirby/router.php\"",
+    "dev:stack": "concurrently --restart-tries 10 --restart-after 1500 -n \"backend,frontend,kirby\" -c \"magenta,cyan,blue\" \"node server.js\" \"vite --host 127.0.0.1 --strictPort\" \"cd kirby-cms && /opt/homebrew/bin/php -S 127.0.0.1:8000 kirby/router.php\"",
+    "dev": "npm run dev:bg:stop && npm run dev:stack",
     "dev:bg": "bash ./scripts/dev-bg-start.sh",
     "dev:bg:stop": "bash ./scripts/dev-bg-stop.sh",
     "dev:bg:status": "bash ./scripts/dev-bg-status.sh",

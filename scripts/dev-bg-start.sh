@@ -5,26 +5,21 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUNTIME_DIR="$ROOT/.runtime"
 LOG_DIR="$RUNTIME_DIR/logs"
 PID_DIR="$RUNTIME_DIR/pids"
-RUNNER="$ROOT/scripts/dev-bg-runner.sh"
+STACK_PID_FILE="$PID_DIR/stack.pid"
+STACK_LOG_FILE="$LOG_DIR/stack.log"
 
 mkdir -p "$LOG_DIR" "$PID_DIR"
 
-timestamp() {
-  date '+%Y-%m-%d %H:%M:%S'
-}
-
-stop_pid_file() {
-  local name="$1"
-  local pid_file="$PID_DIR/${name}.pid"
-  if [[ -f "$pid_file" ]]; then
+stop_stack_pid() {
+  if [[ -f "$STACK_PID_FILE" ]]; then
     local pid
-    pid="$(cat "$pid_file" 2>/dev/null || true)"
+    pid="$(cat "$STACK_PID_FILE" 2>/dev/null || true)"
     if [[ -n "${pid:-}" ]] && kill -0 "$pid" 2>/dev/null; then
       kill "$pid" 2>/dev/null || true
-      sleep 0.3
+      sleep 0.5
       kill -9 "$pid" 2>/dev/null || true
     fi
-    rm -f "$pid_file"
+    rm -f "$STACK_PID_FILE"
   fi
 }
 
@@ -34,22 +29,12 @@ free_port() {
   pids="$(lsof -ti tcp:"$port" -sTCP:LISTEN 2>/dev/null || true)"
   if [[ -n "$pids" ]]; then
     echo "$pids" | xargs kill 2>/dev/null || true
-    sleep 0.4
+    sleep 0.5
     pids="$(lsof -ti tcp:"$port" -sTCP:LISTEN 2>/dev/null || true)"
     if [[ -n "$pids" ]]; then
       echo "$pids" | xargs kill -9 2>/dev/null || true
     fi
   fi
-}
-
-start_proc() {
-  local name="$1"
-  local workdir="$2"
-  shift 2
-  local log_file="$LOG_DIR/${name}.log"
-  local pid_file="$PID_DIR/${name}.pid"
-  nohup "$RUNNER" "$name" "$log_file" "$workdir" "$@" >/dev/null 2>&1 &
-  echo $! > "$pid_file"
 }
 
 http_code() {
@@ -88,12 +73,11 @@ wait_for_http() {
 }
 
 echo "Preparing clean background start..."
-for n in backend frontend kirby; do stop_pid_file "$n"; done
+stop_stack_pid
 for p in 3001 5173 8000; do free_port "$p"; done
 
-start_proc backend "$ROOT" node server.js
-start_proc frontend "$ROOT" npx vite --host 127.0.0.1 --strictPort
-start_proc kirby "$ROOT/kirby-cms" /opt/homebrew/bin/php -S 127.0.0.1:8000 kirby/router.php
+: > "$STACK_LOG_FILE"
+node "$ROOT/scripts/dev-bg-spawn.mjs" >/dev/null
 
 echo "Waiting for services..."
 all_ok=1
@@ -101,22 +85,17 @@ wait_for_http "backend" "http://127.0.0.1:3001/api/project-signature" "200" || a
 wait_for_http "frontend" "http://127.0.0.1:5173/" "200" || all_ok=0
 wait_for_http "kirby" "http://127.0.0.1:8000/" "200 302" || all_ok=0
 
-backend_pid="$(lsof -ti tcp:3001 -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
-frontend_pid="$(lsof -ti tcp:5173 -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
-kirby_pid="$(lsof -ti tcp:8000 -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
 echo ""
 if [[ "$all_ok" -ne 1 ]]; then
   echo "Warning: one or more services failed initial health checks."
-  echo "The supervisor keeps retrying in background. Check logs if needed:"
+  echo "Check logs if needed:"
   echo "- Logs:   npm run dev:bg:logs"
   echo "- Status: npm run dev:bg:status"
 else
-  [[ -n "$backend_pid" ]] && echo "$backend_pid" > "$PID_DIR/backend.pid.port"
-  [[ -n "$frontend_pid" ]] && echo "$frontend_pid" > "$PID_DIR/frontend.pid.port"
-  [[ -n "$kirby_pid" ]] && echo "$kirby_pid" > "$PID_DIR/kirby.pid.port"
+  echo "Background dev stack started."
 fi
 
-echo "Background dev stack started."
+echo "Canonical local start remains: npm run dev"
 echo "- Status: npm run dev:bg:status"
 echo "- Logs:   npm run dev:bg:logs"
 echo "- Stop:   npm run dev:bg:stop"

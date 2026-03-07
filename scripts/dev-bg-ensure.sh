@@ -25,6 +25,6 @@ if [[ "$backend_ok" -eq 1 && "$frontend_ok" -eq 1 && "$kirby_ok" -eq 1 ]]; then
   exit 0
 fi
 
-echo "Detected unhealthy services -> restarting background stack..."
+echo "Detected unhealthy stack -> restarting background stack..."
 bash "$ROOT/scripts/dev-bg-stop.sh"
 bash "$ROOT/scripts/dev-bg-start.sh"

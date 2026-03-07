@@ -3,49 +3,17 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PID_DIR="$ROOT/.runtime/pids"
+STACK_PID_FILE="$PID_DIR/stack.pid"
 
-print_proc() {
-  local name="$1"
-  local port="$2"
-  local pid_file="$PID_DIR/${name}.pid"
-  local runner_pid=""
-  if [[ -f "$pid_file" ]]; then
-    runner_pid="$(cat "$pid_file" 2>/dev/null || true)"
+stack_pid=""
+stack_alive=0
+
+if [[ -f "$STACK_PID_FILE" ]]; then
+  stack_pid="$(cat "$STACK_PID_FILE" 2>/dev/null || true)"
+  if [[ -n "${stack_pid:-}" ]] && kill -0 "$stack_pid" 2>/dev/null; then
+    stack_alive=1
   fi
-  local port_pid
-  port_pid="$(lsof -ti tcp:"$port" -sTCP:LISTEN 2>/dev/null | head -n 1 || true)"
-
-  local runner_alive=0
-  if [[ -n "${runner_pid:-}" ]] && kill -0 "$runner_pid" 2>/dev/null; then
-    runner_alive=1
-  fi
-
-  if [[ "$runner_alive" -eq 1 && -n "$port_pid" ]]; then
-    echo "${name}: running (svc pid $port_pid, runner pid $runner_pid, port $port)"
-    return
-  fi
-
-  if [[ "$runner_alive" -eq 0 && -n "$port_pid" ]]; then
-    if [[ -f "$pid_file" ]]; then
-      echo "${name}: running unmanaged (svc pid $port_pid, stale runner pid ${runner_pid:-unknown})"
-    else
-      echo "${name}: running unmanaged (svc pid $port_pid, no runner pid file)"
-    fi
-    return
-  fi
-
-  if [[ "$runner_alive" -eq 1 && -z "$port_pid" ]]; then
-    echo "${name}: restarting/crashed (runner pid $runner_pid alive, port $port down)"
-    return
-  fi
-
-  if [[ -f "$pid_file" ]]; then
-    echo "${name}: stale pid file (${runner_pid:-unknown}, port $port down)"
-    return
-  fi
-
-  echo "${name}: not running (port $port down)"
-}
+fi
 
 http_code() {
   local url="$1"
@@ -57,10 +25,14 @@ http_code() {
   echo "${code:0:3}"
 }
 
-echo "Processes:"
-print_proc backend 3001
-print_proc frontend 5173
-print_proc kirby 8000
+echo "Stack:"
+if [[ "$stack_alive" -eq 1 ]]; then
+  echo "stack: running (pid $stack_pid)"
+elif [[ -f "$STACK_PID_FILE" ]]; then
+  echo "stack: stale pid file (${stack_pid:-unknown})"
+else
+  echo "stack: not running"
+fi
 
 echo ""
 echo "Ports:"
