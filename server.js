@@ -422,6 +422,21 @@ const upsertPageContentFile = (contentDir, title) => {
     fs.writeFileSync(txtFilePath, fileContent, 'utf-8');
 };
 
+const removeDefaultTemplateArtifacts = (contentDir) => {
+    if (!fs.existsSync(contentDir)) return;
+    for (const entry of fs.readdirSync(contentDir)) {
+        if (!/^default\s+.+\.txt$/i.test(entry)) continue;
+        const absolute = path.join(contentDir, entry);
+        try {
+            if (fs.statSync(absolute).isFile()) {
+                fs.rmSync(absolute, { force: true });
+            }
+        } catch {
+            // ignore individual artifact cleanup failures
+        }
+    }
+};
+
 const findMatchingDirForSlug = (dirs, slug, used = new Set()) => {
     const slugPattern = new RegExp(`^(?:\\d+_)?${escapeRegex(slug)}$`);
     return dirs.find((entry) => used.has(entry) === false && slugPattern.test(entry)) || null;
@@ -502,6 +517,7 @@ const syncPagesInContent = (contentRoot, rawPages = []) => {
             fs.mkdirSync(finalDir, { recursive: true });
         }
         upsertPageContentFile(finalDir, page.title);
+        removeDefaultTemplateArtifacts(finalDir);
     }
 
     return {
@@ -1042,15 +1058,109 @@ const computeProjectSignature = () => {
     return hash.digest('hex');
 };
 
+const jsonTempFilePath = (filePath) => `${filePath}.tmp`;
+
+const fsyncPath = (targetPath) => {
+    let fd;
+    try {
+        fd = fs.openSync(targetPath, 'r');
+        fs.fsyncSync(fd);
+    } catch {
+        // Best effort only (platform/filesystem dependent)
+    } finally {
+        if (fd !== undefined) {
+            try {
+                fs.closeSync(fd);
+            } catch {
+                // noop
+            }
+        }
+    }
+};
+
+const parseJsonRaw = (raw = '') => {
+    try {
+        return JSON.parse(raw);
+    } catch {
+        return null;
+    }
+};
+
+const recoverAtomicJsonFile = (filePath) => {
+    const targetPath = path.resolve(filePath);
+    const tmpPath = jsonTempFilePath(targetPath);
+
+    if (!fs.existsSync(tmpPath)) return;
+
+    let tmpRaw = '';
+    try {
+        tmpRaw = fs.readFileSync(tmpPath, 'utf-8');
+    } catch {
+        fs.rmSync(tmpPath, { force: true });
+        return;
+    }
+
+    const tmpParsed = parseJsonRaw(tmpRaw);
+    if (tmpParsed === null) {
+        fs.rmSync(tmpPath, { force: true });
+        return;
+    }
+
+    const targetExists = fs.existsSync(targetPath);
+    if (!targetExists) {
+        fs.renameSync(tmpPath, targetPath);
+        fsyncPath(path.dirname(targetPath));
+        return;
+    }
+
+    let targetRaw = '';
+    try {
+        targetRaw = fs.readFileSync(targetPath, 'utf-8');
+    } catch {
+        targetRaw = '';
+    }
+    const targetParsed = parseJsonRaw(targetRaw);
+
+    const tmpMtime = fs.statSync(tmpPath).mtimeMs || 0;
+    const targetMtime = fs.statSync(targetPath).mtimeMs || 0;
+    const shouldPromoteTmp = targetParsed === null || tmpMtime >= targetMtime;
+
+    if (shouldPromoteTmp) {
+        try {
+            fs.renameSync(tmpPath, targetPath);
+        } catch {
+            fs.rmSync(targetPath, { force: true });
+            fs.renameSync(tmpPath, targetPath);
+        }
+        fsyncPath(path.dirname(targetPath));
+        return;
+    }
+
+    fs.rmSync(tmpPath, { force: true });
+};
+
 const writeJsonFile = (filePath, payload) => {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
+    const targetPath = path.resolve(filePath);
+    const targetDir = path.dirname(targetPath);
+    const tmpPath = jsonTempFilePath(targetPath);
+
+    fs.mkdirSync(targetDir, { recursive: true });
+    recoverAtomicJsonFile(targetPath);
+
+    const serialized = JSON.stringify(payload, null, 2);
+    fs.writeFileSync(tmpPath, serialized, 'utf-8');
+    fsyncPath(tmpPath);
+    fs.renameSync(tmpPath, targetPath);
+    fsyncPath(targetDir);
 };
 
 const readJsonFileOrNull = (filePath) => {
-    if (!fs.existsSync(filePath)) return null;
+    const targetPath = path.resolve(filePath);
+    recoverAtomicJsonFile(targetPath);
+
+    if (!fs.existsSync(targetPath)) return null;
     try {
-        return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        return JSON.parse(fs.readFileSync(targetPath, 'utf-8'));
     } catch {
         return null;
     }
@@ -1133,6 +1243,47 @@ const projectSnapshotCssPath = (projectPath, options = {}) =>
     path.join(resolveProjectMetaDir(projectPath, options), 'snapshot', 'custom.css');
 const HISTORY_FILE = path.join(FLATSITE_DIR, 'projects-history.json');
 
+const recoverAtomicJsonStateOnStartup = () => {
+    ensureFlatsiteDir();
+
+    recoverAtomicJsonFile(STORAGE_CONFIG_FILE);
+    recoverAtomicJsonFile(ACTIVE_PROJECT_FILE);
+    recoverAtomicJsonFile(HISTORY_FILE);
+
+    const candidateProjectPaths = new Set();
+    const history = readJsonFileOrNull(HISTORY_FILE);
+    if (Array.isArray(history?.projects)) {
+        for (const entry of history.projects) {
+            const rawPath = String(entry?.path || '').trim();
+            if (!rawPath) continue;
+            try {
+                candidateProjectPaths.add(normalizeProjectPath(rawPath));
+            } catch {
+                // ignore broken entries
+            }
+        }
+    }
+
+    const activeData = readJsonFileOrNull(ACTIVE_PROJECT_FILE);
+    const activePath = String(activeData?.projectPath || '').trim();
+    if (activePath) {
+        try {
+            candidateProjectPaths.add(normalizeProjectPath(activePath));
+        } catch {
+            // ignore broken active pointer
+        }
+    }
+
+    for (const projectPath of candidateProjectPaths) {
+        recoverAtomicJsonFile(projectManifestPath(projectPath));
+        recoverAtomicJsonFile(projectStatePath(projectPath));
+        recoverAtomicJsonFile(path.join(projectMetaDirLegacy(projectPath), 'manifest.json'));
+        recoverAtomicJsonFile(path.join(projectMetaDirLegacy(projectPath), 'state.json'));
+    }
+};
+
+recoverAtomicJsonStateOnStartup();
+
 const projectIdFromPath = (projectPath) =>
     crypto.createHash('sha1').update(projectPath).digest('hex').slice(0, 12);
 
@@ -1210,6 +1361,30 @@ const touchProjectInHistory = (manifest) => {
     });
 
     writeProjectHistory({ projects: filtered.slice(0, 50) });
+};
+
+const projectLocks = new Map();
+
+const withProjectLock = (projectPath, task) => {
+    const key = normalizeProjectPath(projectPath);
+    const previous = projectLocks.get(key) || Promise.resolve();
+
+    let releaseCurrent;
+    const currentGate = new Promise((resolve) => {
+        releaseCurrent = resolve;
+    });
+    const queueTail = previous.catch(() => {}).then(() => currentGate);
+    projectLocks.set(key, queueTail);
+
+    return previous
+        .catch(() => {})
+        .then(() => task())
+        .finally(() => {
+            releaseCurrent();
+            if (projectLocks.get(key) === queueTail) {
+                projectLocks.delete(key);
+            }
+        });
 };
 
 const snapshotLiveProjectToStore = (projectPath) => {
@@ -1304,8 +1479,11 @@ const saveProjectAtPath = (projectPathInput, statePayload = {}) => {
         updatedAt: now
     };
 
+    const rawStatePayload = statePayload && typeof statePayload === 'object' ? statePayload : {};
+    const { pages: _ignoredPages, ...stateWithoutPages } = rawStatePayload;
+
     writeJsonFile(projectManifestPath(projectPath, { forWrite: true }), manifest);
-    writeJsonFile(projectStatePath(projectPath, { forWrite: true }), statePayload || {});
+    writeJsonFile(projectStatePath(projectPath, { forWrite: true }), stateWithoutPages);
     snapshotLiveProjectToStore(projectPath);
     touchProjectInHistory(manifest);
     setActiveProjectPath(projectPath);
@@ -1336,8 +1514,44 @@ const openProjectByPath = (projectPathInput) => {
     const manifest = readJsonFileOrNull(projectManifestPath(projectPath));
     if (!manifest) throw new Error('In diesem Ordner wurde kein Flatsite-Projekt gefunden');
 
-    const state = readJsonFileOrNull(projectStatePath(projectPath)) || {};
+    let state = readJsonFileOrNull(projectStatePath(projectPath)) || {};
     restoreStoredProjectToLive(projectPath);
+
+    let canonicalPages = listPagesForFlatsiteUi(LIVE_CONTENT_DIR)
+        .map((page) => ({
+            slug: sanitizeSlug(page?.id),
+            title: String(page?.title || '').trim()
+        }))
+        .filter((page) => page.slug && page.title);
+
+    // One-time compatibility migration for old projects that still persisted pages in state.json.
+    if (canonicalPages.length === 0) {
+        const legacyStatePages = Array.isArray(state.pages) ? state.pages : [];
+        const normalizedLegacyPages = legacyStatePages
+            .filter((page) => page?.selected !== false)
+            .map((page) => ({
+                slug: sanitizeSlug(page?.id),
+                title: String(page?.title || '').trim()
+            }))
+            .filter((page) => page.slug && page.title);
+
+        if (normalizedLegacyPages.length > 0) {
+            syncPagesInContent(LIVE_CONTENT_DIR, normalizedLegacyPages);
+            canonicalPages = normalizedLegacyPages;
+        }
+    }
+
+    // Keep Kirby content canonical on project open so editor and app show the same pages.
+    if (canonicalPages.length > 0) {
+        syncPagesInContent(LIVE_CONTENT_DIR, canonicalPages);
+    }
+
+    // Remove legacy duplicate page source from state.json (pages now live in Kirby content only).
+    if (Array.isArray(state.pages)) {
+        const { pages: _legacyPages, ...stateWithoutPages } = state;
+        state = stateWithoutPages;
+        writeJsonFile(projectStatePath(projectPath, { forWrite: true }), stateWithoutPages);
+    }
 
     const now = new Date().toISOString();
     const nextManifest = { ...manifest, updatedAt: now, path: projectPath };
@@ -1585,11 +1799,11 @@ app.get('/api/projects/list', (req, res) => {
     }
 });
 
-app.post('/api/projects/create', express.json(), (req, res) => {
+app.post('/api/projects/create', express.json(), async (req, res) => {
     try {
         const projectPath = normalizeProjectPath(req.body?.projectPath || '');
         const state = req.body?.state || {};
-        const project = saveProjectAtPath(projectPath, state);
+        const project = await withProjectLock(projectPath, () => saveProjectAtPath(projectPath, state));
         res.json({ success: true, project });
     } catch (err) {
         console.error('Fehler beim Erstellen des Projekts:', err);
@@ -1597,14 +1811,14 @@ app.post('/api/projects/create', express.json(), (req, res) => {
     }
 });
 
-app.post('/api/projects/save', express.json(), (req, res) => {
+app.post('/api/projects/save', express.json(), async (req, res) => {
     try {
         const projectPath = resolveProjectPathFromRequest({
             projectId: req.body?.projectId,
             projectPath: req.body?.projectPath
         });
         const state = req.body?.state || {};
-        const project = saveProjectAtPath(projectPath, state);
+        const project = await withProjectLock(projectPath, () => saveProjectAtPath(projectPath, state));
         res.json({ success: true, project });
     } catch (err) {
         console.error('Fehler beim Speichern des Projekts:', err);
@@ -1612,13 +1826,13 @@ app.post('/api/projects/save', express.json(), (req, res) => {
     }
 });
 
-app.post('/api/projects/open', express.json(), (req, res) => {
+app.post('/api/projects/open', express.json(), async (req, res) => {
     try {
         const projectPath = resolveProjectPathFromRequest({
             projectId: req.body?.projectId,
             projectPath: req.body?.projectPath
         });
-        const project = openProjectByPath(projectPath);
+        const project = await withProjectLock(projectPath, () => openProjectByPath(projectPath));
         res.json({ success: true, project });
     } catch (err) {
         console.error('Fehler beim Oeffnen des Projekts:', err);
@@ -1626,13 +1840,13 @@ app.post('/api/projects/open', express.json(), (req, res) => {
     }
 });
 
-app.get('/api/projects/current', (req, res) => {
+app.get('/api/projects/current', async (req, res) => {
     try {
         const activePath = getActiveProjectPath();
         if (!activePath) {
             return res.json({ success: true, project: null });
         }
-        const project = openProjectByPath(activePath);
+        const project = await withProjectLock(activePath, () => openProjectByPath(activePath));
         res.json({ success: true, project });
     } catch {
         res.json({ success: true, project: null });

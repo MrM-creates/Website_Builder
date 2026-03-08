@@ -378,10 +378,10 @@ function App() {
   const isApplyingProjectStateRef = useRef(false);
   const lastPersistedContentSignatureRef = useRef('');
   const isResettingProjectRef = useRef(false);
+  const saveQueueRef = useRef(Promise.resolve());
 
   const collectProjectState = () => ({
     projectName: projectName.trim(),
-    pages,
     selectedDesign,
     selectedVibeId,
     hostingProvider,
@@ -405,7 +405,6 @@ function App() {
     isApplyingProjectStateRef.current = true;
 
     setProjectName(String(state.projectName || ''));
-    setPages(Array.isArray(state.pages) && state.pages.length ? state.pages : DEFAULT_PAGES.map((p) => ({ ...p })));
     const resolvedDesign = String(state.selectedDesign || 'minimalist');
     const fallbackVibe = getVibeByLegacyIndex(resolvedDesign, state.selectedColor);
     const resolvedVibeId = String(state.selectedVibeId || fallbackVibe?.id || getDefaultVibeForStyle(resolvedDesign)?.id || '');
@@ -626,7 +625,23 @@ function App() {
     }
   };
 
-  const saveCurrentProject = async (projectIdOverride = '', projectPathOverride = '') => {
+  const syncPagesToKirby = async (pagesInput = pages) => {
+    const payloadPages = (Array.isArray(pagesInput) ? pagesInput : [])
+      .filter((p) => p?.selected !== false)
+      .map((p) => ({
+        slug: String(p?.id || '').trim(),
+        title: String(p?.title || '').trim(),
+      }))
+      .filter((p) => p.slug && p.title);
+
+    await fetch(`${BACKEND_URL}/api/sync-pages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pages: payloadPages }),
+    });
+  };
+
+  const runProjectSave = async (projectIdOverride = '', projectPathOverride = '') => {
     const projectId = projectIdOverride || currentProjectId;
     const projectPath = String(projectPathOverride || currentProjectPath || '').trim();
     if (!projectId && !projectPath) return;
@@ -648,14 +663,27 @@ function App() {
     setCurrentProjectPath(String(data.project.path || projectPath));
   };
 
+  const saveCurrentProject = (projectIdOverride = '', projectPathOverride = '') => {
+    const queued = saveQueueRef.current
+      .catch(() => {})
+      .then(() => runProjectSave(projectIdOverride, projectPathOverride));
+
+    saveQueueRef.current = queued.catch(() => {});
+    return queued;
+  };
+
   const openExistingProject = async ({ projectId = '', projectPath = '' } = {}) => {
     if ((!projectId && !projectPath) || isOpeningProject) return;
     setProjectError('');
     setIsOpeningProject(true);
 
     try {
-      if (currentProjectId) {
-        await saveCurrentProject();
+      if (currentProjectId && step !== 'welcome') {
+        try {
+          await saveCurrentProject();
+        } catch (err) {
+          console.warn('Autosave vor Projektwechsel fehlgeschlagen:', err?.message || err);
+        }
       }
 
       const res = await fetch(`${BACKEND_URL}/api/projects/open`, {
@@ -672,17 +700,26 @@ function App() {
       setCurrentProjectId(data.project.id);
       setCurrentProjectPath(String(data.project.path || ''));
       const loadedState = { ...(data.project.state || {}) };
-      const contentPages = await fetchPagesFromKirbyContent({ applyState: false });
-      if (contentPages.length) {
-        loadedState.pages = contentPages;
+      let contentPages = await fetchPagesFromKirbyContent({ applyState: false });
+      const hasSavedPages = Array.isArray(loadedState.pages) && loadedState.pages.length > 0;
+
+      if (!contentPages.length && hasSavedPages) {
+        await syncPagesToKirby(loadedState.pages);
+        contentPages = await fetchPagesFromKirbyContent({ applyState: false });
       }
-      if (contentPages.length && !loadedState.setupDone) {
+
+      const canonicalPages = contentPages.length
+        ? contentPages
+        : DEFAULT_PAGES.map((p) => ({ ...p }));
+
+      if ((contentPages.length || hasSavedPages) && !loadedState.setupDone) {
         loadedState.setupDone = true;
       }
       if (!String(loadedState.projectName || '').trim() && String(data.project?.name || '').trim()) {
         loadedState.projectName = String(data.project.name);
       }
       applyProjectState(loadedState);
+      setPages(canonicalPages);
       setShowProjectList(false);
       setStep('editor');
       await refreshProjects();
@@ -749,6 +786,26 @@ function App() {
   }, [step]);
 
   useEffect(() => {
+    if (step !== 'pages' || isApplyingProjectStateRef.current || isResettingProjectRef.current) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      syncPagesToKirby(pages)
+        .then(async () => {
+          if (currentProjectId || currentProjectPath) {
+            await saveCurrentProject();
+          }
+        })
+        .catch((err) => {
+          console.warn('Seiten-Sync fehlgeschlagen:', err?.message || err);
+        });
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [step, pages, currentProjectId, currentProjectPath]);
+
+  useEffect(() => {
     fetchProjectSignature();
     refreshProjects();
     fetchProjectPreferences();
@@ -773,7 +830,7 @@ function App() {
   }, [step]);
 
   useEffect(() => {
-    if (!currentProjectId || step === 'welcome' || isApplyingProjectStateRef.current || isResettingProjectRef.current) {
+    if (!currentProjectId || step !== 'editor' || isApplyingProjectStateRef.current || isResettingProjectRef.current) {
       return;
     }
 
@@ -873,7 +930,7 @@ function App() {
   const performStartNewProject = async (projectPath) => {
     isResettingProjectRef.current = true;
 
-    if (currentProjectId) {
+    if (currentProjectId && step !== 'welcome') {
       try {
         await saveCurrentProject();
       } catch {
@@ -955,7 +1012,6 @@ function App() {
           projectPath,
           state: {
             projectName: '',
-            pages: DEFAULT_PAGES.map((p) => ({ ...p })),
             selectedDesign: 'minimalist',
             selectedVibeId: getDefaultVibeForStyle('minimalist')?.id || 'M-01',
             hostingProvider: TEST_HOSTING_DEFAULTS.hostingProvider,
@@ -1138,15 +1194,7 @@ function App() {
     });
 
     if (syncPages) {
-      await fetch(`${BACKEND_URL}/api/sync-pages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pages: pages
-            .filter((p) => p.selected)
-            .map((p) => ({ slug: p.id, title: p.title }))
-        }),
-      });
+      await syncPagesToKirby(pages);
     }
 
     const vibe = getSelectedVibe(selectedDesign, selectedVibeId);
