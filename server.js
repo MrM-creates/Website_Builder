@@ -1445,8 +1445,46 @@ const recoverAtomicJsonStateOnStartup = () => {
 
 recoverAtomicJsonStateOnStartup();
 
-const projectIdFromPath = (projectPath) =>
-    crypto.createHash('sha1').update(projectPath).digest('hex').slice(0, 12);
+const LEGACY_PROJECT_ID_PATTERN = /^[a-f0-9]{12}$/i;
+
+const createProjectId = () => {
+    if (typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+    const hex = crypto.randomBytes(16).toString('hex');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+};
+
+const normalizeProjectId = (value = '') => String(value || '').trim();
+
+const ensureStableProjectId = (value = '') => {
+    const normalized = normalizeProjectId(value);
+    if (!normalized) return createProjectId();
+    if (LEGACY_PROJECT_ID_PATTERN.test(normalized)) return createProjectId();
+    return normalized;
+};
+
+const readProjectManifest = (projectPathInput, { migrate = false } = {}) => {
+    const projectPath = normalizeProjectPath(projectPathInput);
+    const manifestPath = projectManifestPath(projectPath);
+    const raw = readJsonFileOrNull(manifestPath);
+    if (!raw || typeof raw !== 'object') return null;
+
+    const normalizedPath = normalizeProjectPath(projectPath);
+    const normalizedId = ensureStableProjectId(raw.id);
+    const normalized = {
+        ...raw,
+        id: normalizedId,
+        path: normalizedPath
+    };
+
+    const changed = normalizedId !== normalizeProjectId(raw.id) || normalizedPath !== String(raw.path || '').trim();
+    if (migrate && changed) {
+        writeJsonFile(projectManifestPath(projectPath, { forWrite: true }), normalized);
+    }
+
+    return normalized;
+};
 
 const readUiConfig = () => {
     ensureFlatsiteDir();
@@ -1474,14 +1512,39 @@ const getProjectPreferences = () => {
     return { defaultProjectsRoot };
 };
 
-const setActiveProjectPath = (projectPath) => {
+const setActiveProjectRef = ({ projectPath = '', projectId = '' } = {}) => {
     ensureFlatsiteDir();
-    writeJsonFile(ACTIVE_PROJECT_FILE, { projectPath });
+    const payload = {};
+    if (projectPath) {
+        payload.projectPath = normalizeProjectPath(projectPath);
+    }
+    const normalizedId = normalizeProjectId(projectId);
+    if (normalizedId) {
+        payload.projectId = normalizedId;
+    }
+    writeJsonFile(ACTIVE_PROJECT_FILE, payload);
+};
+
+const getActiveProjectRef = () => {
+    const data = readJsonFileOrNull(ACTIVE_PROJECT_FILE);
+    let projectPath = '';
+    let projectId = '';
+
+    if (data?.projectPath) {
+        try {
+            projectPath = normalizeProjectPath(data.projectPath);
+        } catch {
+            projectPath = '';
+        }
+    }
+
+    projectId = normalizeProjectId(data?.projectId);
+
+    return { projectPath, projectId };
 };
 
 const getActiveProjectPath = () => {
-    const data = readJsonFileOrNull(ACTIVE_PROJECT_FILE);
-    return data?.projectPath ? normalizeProjectPath(data.projectPath) : '';
+    return getActiveProjectRef().projectPath;
 };
 
 const readProjectHistory = () => {
@@ -1489,8 +1552,40 @@ const readProjectHistory = () => {
     if (!Array.isArray(data?.projects)) {
         return { projects: [] };
     }
+
+    const seenIds = new Set();
+    const seenPaths = new Set();
+    const normalizedProjects = [];
+
+    for (const rawEntry of data.projects) {
+        const rawPath = String(rawEntry?.path || '').trim();
+        if (!rawPath) continue;
+
+        let normalizedPath = '';
+        try {
+            normalizedPath = normalizeProjectPath(rawPath);
+        } catch {
+            continue;
+        }
+
+        const normalizedId = normalizeProjectId(rawEntry?.id);
+        if (normalizedId && seenIds.has(normalizedId)) continue;
+        if (seenPaths.has(normalizedPath)) continue;
+
+        if (normalizedId) seenIds.add(normalizedId);
+        seenPaths.add(normalizedPath);
+
+        normalizedProjects.push({
+            id: normalizedId,
+            name: String(rawEntry?.name || '').trim(),
+            path: normalizedPath,
+            updatedAt: rawEntry?.updatedAt || null,
+            createdAt: rawEntry?.createdAt || null
+        });
+    }
+
     return {
-        projects: data.projects.filter((entry) => Boolean(entry?.path))
+        projects: normalizedProjects
     };
 };
 
@@ -1504,7 +1599,7 @@ const touchProjectInHistory = (manifest) => {
     const history = readProjectHistory();
     const normalizedPath = normalizeProjectPath(manifest.path);
     const now = new Date().toISOString();
-    const manifestId = String(manifest?.id || '').trim();
+    const manifestId = ensureStableProjectId(manifest?.id);
 
     const filtered = history.projects.filter((entry) => {
         if (manifestId && String(entry?.id || '').trim() === manifestId) return false;
@@ -1515,7 +1610,7 @@ const touchProjectInHistory = (manifest) => {
         }
     });
     filtered.unshift({
-        id: manifest.id,
+        id: manifestId,
         name: manifest.name,
         path: normalizedPath,
         updatedAt: now
@@ -1588,7 +1683,7 @@ const restoreStoredProjectToLive = (projectPath) => {
 const saveProjectAtPath = (projectPathInput, statePayload = {}) => {
     const initialProjectPath = normalizeProjectPath(projectPathInput);
     let projectPath = initialProjectPath;
-    const previousManifest = readJsonFileOrNull(projectManifestPath(initialProjectPath));
+    const previousManifest = readProjectManifest(initialProjectPath, { migrate: true });
     const now = new Date().toISOString();
 
     fs.mkdirSync(projectPath, { recursive: true });
@@ -1633,7 +1728,7 @@ const saveProjectAtPath = (projectPathInput, statePayload = {}) => {
     fs.mkdirSync(metaDir, { recursive: true });
 
     const manifest = {
-        id: previousManifest?.id || projectIdFromPath(projectPath),
+        id: ensureStableProjectId(previousManifest?.id),
         name,
         path: projectPath,
         createdAt: previousManifest?.createdAt || now,
@@ -1647,9 +1742,34 @@ const saveProjectAtPath = (projectPathInput, statePayload = {}) => {
     writeJsonFile(projectStatePath(projectPath, { forWrite: true }), stateWithoutPages);
     snapshotLiveProjectToStore(projectPath);
     touchProjectInHistory(manifest);
-    setActiveProjectPath(projectPath);
+    setActiveProjectRef({ projectPath, projectId: manifest.id });
 
     return manifest;
+};
+
+const findProjectPathById = (projectId = '') => {
+    const requestedId = normalizeProjectId(projectId);
+    if (!requestedId) return '';
+
+    const history = readProjectHistory();
+    const directMatch = history.projects.find((entry) => entry.id === requestedId);
+    if (directMatch?.path) {
+        return normalizeProjectPath(directMatch.path);
+    }
+
+    for (const entry of history.projects) {
+        try {
+            const candidatePath = normalizeProjectPath(entry.path);
+            const manifest = readProjectManifest(candidatePath, { migrate: true });
+            if (manifest?.id === requestedId) {
+                return candidatePath;
+            }
+        } catch {
+            // ignore invalid history entries
+        }
+    }
+
+    return '';
 };
 
 const resolveProjectPathFromRequest = ({ projectId = '', projectPath = '' } = {}) => {
@@ -1658,15 +1778,21 @@ const resolveProjectPathFromRequest = ({ projectId = '', projectPath = '' } = {}
     }
 
     if (projectId) {
-        const history = readProjectHistory();
-        const match = history.projects.find((entry) => entry.id === projectId);
-        if (match?.path) {
-            return normalizeProjectPath(match.path);
+        const resolved = findProjectPathById(projectId);
+        if (resolved) {
+            return resolved;
         }
     }
 
-    const active = getActiveProjectPath();
-    if (active) return active;
+    const activeRef = getActiveProjectRef();
+    if (activeRef.projectId) {
+        const resolvedActivePath = findProjectPathById(activeRef.projectId);
+        if (resolvedActivePath) {
+            return resolvedActivePath;
+        }
+    }
+
+    if (activeRef.projectPath) return activeRef.projectPath;
     throw new Error('Projekt konnte nicht gefunden werden');
 };
 
@@ -1761,7 +1887,7 @@ const sanitizeProjectSnapshotOnOpen = (projectPath, projectId) => {
 
 const openProjectByPath = (projectPathInput) => {
     const projectPath = normalizeProjectPath(projectPathInput);
-    const manifest = readJsonFileOrNull(projectManifestPath(projectPath));
+    const manifest = readProjectManifest(projectPath, { migrate: true });
     if (!manifest) throw new Error('In diesem Ordner wurde kein Flatsite-Projekt gefunden');
 
     let state = readJsonFileOrNull(projectStatePath(projectPath)) || {};
@@ -1815,33 +1941,38 @@ const openProjectByPath = (projectPathInput) => {
     }
 
     const now = new Date().toISOString();
-    const nextManifest = { ...manifest, updatedAt: now, path: projectPath };
+    const nextManifest = { ...manifest, id: ensureStableProjectId(manifest.id), updatedAt: now, path: projectPath };
     writeJsonFile(projectManifestPath(projectPath, { forWrite: true }), nextManifest);
     touchProjectInHistory(nextManifest);
-    setActiveProjectPath(projectPath);
+    setActiveProjectRef({ projectPath, projectId: nextManifest.id });
 
     return { ...nextManifest, state };
 };
 
 const listProjects = () => {
     const history = readProjectHistory();
-    const activeProjectPath = getActiveProjectPath();
+    const activeRef = getActiveProjectRef();
 
     const projects = [];
     for (const entry of history.projects) {
         try {
             const projectPath = normalizeProjectPath(entry.path);
             if (!fs.existsSync(projectManifestPath(projectPath))) continue;
-            const manifest = readJsonFileOrNull(projectManifestPath(projectPath));
+            const manifest = readProjectManifest(projectPath, { migrate: true });
             if (!manifest) continue;
+            const manifestId = ensureStableProjectId(manifest.id);
 
             projects.push({
-                id: manifest.id || projectIdFromPath(projectPath),
+                id: manifestId,
                 name: manifest.name || entry.name || path.basename(projectPath) || 'Unbenanntes Projekt',
                 path: projectPath,
                 createdAt: manifest.createdAt || null,
                 updatedAt: manifest.updatedAt || entry.updatedAt || null,
-                isActive: activeProjectPath ? projectPath === activeProjectPath : false
+                isActive: activeRef.projectId
+                    ? manifestId === activeRef.projectId
+                    : activeRef.projectPath
+                        ? projectPath === activeRef.projectPath
+                        : false
             });
         } catch {
             // ignore invalid history entries
@@ -2097,8 +2228,13 @@ app.post('/api/projects/allocate-path', express.json(), (req, res) => {
 app.get('/api/projects/list', (req, res) => {
     try {
         const projects = listProjects();
-        const activeProjectPath = getActiveProjectPath() || null;
-        res.json({ success: true, projects, activeProjectPath });
+        const activeRef = getActiveProjectRef();
+        res.json({
+            success: true,
+            projects,
+            activeProjectPath: activeRef.projectPath || null,
+            activeProjectId: activeRef.projectId || null
+        });
     } catch (err) {
         console.error('Fehler beim Laden der Projekte:', err);
         res.status(500).json({ success: false, error: 'Projekte konnten nicht geladen werden' });
@@ -2148,7 +2284,11 @@ app.post('/api/projects/open', express.json(), async (req, res) => {
 
 app.get('/api/projects/current', async (req, res) => {
     try {
-        const activePath = getActiveProjectPath();
+        const activeRef = getActiveProjectRef();
+        const activePath = resolveProjectPathFromRequest({
+            projectId: activeRef.projectId,
+            projectPath: activeRef.projectPath
+        });
         if (!activePath) {
             return res.json({ success: true, project: null });
         }
@@ -2497,10 +2637,14 @@ app.post('/api/sync-pages', express.json(), (req, res) => {
         let activeProjectPath = '';
         let activeProjectId = '';
         try {
-            activeProjectPath = getActiveProjectPath();
+            const activeRef = getActiveProjectRef();
+            activeProjectPath = resolveProjectPathFromRequest({
+                projectId: activeRef.projectId,
+                projectPath: activeRef.projectPath
+            });
             if (activeProjectPath) {
-                const manifest = readJsonFileOrNull(projectManifestPath(activeProjectPath));
-                activeProjectId = String(manifest?.id || '').trim();
+                const manifest = readProjectManifest(activeProjectPath, { migrate: true });
+                activeProjectId = normalizeProjectId(manifest?.id);
             }
         } catch {
             activeProjectPath = '';

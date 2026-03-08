@@ -55,13 +55,13 @@ Regel: Es wird immer nur die aktuelle Phase bearbeitet, keine Parallel-Themen.
 - [x] Kein unkontrollierter Prozess-Kill im Normalpfad.
 
 ## Phase 5: Projektidentität robust machen (0.5 Tag)
-- [ ] UUID als Primär-ID erzwingen; Pfad nur als Attribut.
-- [ ] History deduplizieren nach UUID.
-- [ ] Active-Status nur über UUID führen.
+- [x] UUID als Primär-ID erzwingen; Pfad nur als Attribut.
+- [x] History deduplizieren nach UUID.
+- [x] Active-Status nur über UUID führen.
 
 ### Definition of Done
-- [ ] Umbenennen/Verschieben erzeugt keine Duplikate.
-- [ ] Aktiv-Marker ist immer korrekt.
+- [x] Umbenennen/Verschieben erzeugt keine Duplikate.
+- [x] Aktiv-Marker ist immer korrekt.
 
 ## Phase 6: Deploy-Absicherung (1 Tag)
 - [ ] Staging-Upload + validiertes Entpacken robust machen.
