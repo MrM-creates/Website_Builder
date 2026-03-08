@@ -108,6 +108,24 @@ const ensureTrailingSlashForDirectory = (url = '') => {
   }
 };
 
+const withDefaultIfBlank = (value, fallback = '') => {
+  const normalized = String(value ?? '').trim();
+  return normalized ? normalized : String(fallback ?? '');
+};
+
+const normalizeFtpUserFromState = (state = {}) => {
+  const fallback = TEST_HOSTING_DEFAULTS.ftpUser;
+  const value = withDefaultIfBlank(state?.ftpUser, fallback);
+  const provider = String(state?.hostingProvider || '').trim().toLowerCase();
+
+  // Guard against legacy cross-field corruption in Hostpoint projects
+  if (provider === 'hostpoint' && !String(value).includes('@')) {
+    return fallback;
+  }
+
+  return value;
+};
+
 const DEFAULT_PAGES = [
   { id: 'portfolio', title: 'Portfolio', selected: true },
   { id: 'about', title: 'Über mich', selected: true },
@@ -425,10 +443,10 @@ function App() {
     setHostingProvider(String(state.hostingProvider || TEST_HOSTING_DEFAULTS.hostingProvider));
     setConnectionType(resolvedConnectionType);
     setFtpServer(String(state.ftpServer ?? TEST_HOSTING_DEFAULTS.ftpServer));
-    setFtpUser(String(state.ftpUser ?? TEST_HOSTING_DEFAULTS.ftpUser));
+    setFtpUser(normalizeFtpUserFromState(state));
     setFtpPassword(String(state.ftpPassword ?? TEST_HOSTING_DEFAULTS.ftpPassword));
     setFtpPort(resolvedPort);
-    setWebsiteUrl(String(state.websiteUrl ?? TEST_HOSTING_DEFAULTS.websiteUrl));
+    setWebsiteUrl(withDefaultIfBlank(state.websiteUrl, TEST_HOSTING_DEFAULTS.websiteUrl));
     setTargetPath(String(state.targetPath ?? TEST_HOSTING_DEFAULTS.targetPath));
     setFooterLine1(String(state.footerLine1 ?? ''));
     setFooterLine2(String(state.footerLine2 ?? ''));
@@ -651,7 +669,7 @@ function App() {
     });
   };
 
-  const runProjectSave = async (projectIdOverride = '', projectPathOverride = '') => {
+  const runProjectSave = async (projectIdOverride = '', projectPathOverride = '', stateOverride = null) => {
     const projectId = projectIdOverride || currentProjectId;
     const projectPath = String(projectPathOverride || currentProjectPath || '').trim();
     if (!projectId && !projectPath) return;
@@ -662,7 +680,7 @@ function App() {
       body: JSON.stringify({
         projectId: projectId || undefined,
         projectPath: projectPath || undefined,
-        state: collectProjectState(),
+        state: stateOverride && typeof stateOverride === 'object' ? stateOverride : collectProjectState(),
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -673,10 +691,10 @@ function App() {
     setCurrentProjectPath(String(data.project.path || projectPath));
   };
 
-  const saveCurrentProject = (projectIdOverride = '', projectPathOverride = '') => {
+  const saveCurrentProject = (projectIdOverride = '', projectPathOverride = '', stateOverride = null) => {
     const queued = saveQueueRef.current
       .catch(() => {})
-      .then(() => runProjectSave(projectIdOverride, projectPathOverride));
+      .then(() => runProjectSave(projectIdOverride, projectPathOverride, stateOverride));
 
     saveQueueRef.current = queued.catch(() => {});
     return queued;
@@ -1231,8 +1249,8 @@ function App() {
   const serverPlaceholder = selectedHostingPreset.server
     ? `z.B. ${selectedHostingPreset.server}`
     : 'z.B. ftp.dein-anbieter.ch';
-  const websiteViewUrl = String(lastPublishedViewUrl || '').trim();
-  const canOpenWebsite = Boolean(websiteViewUrl);
+  const websiteViewUrl = String(lastPublishedViewUrl || '').trim() || (isLive ? buildWebsiteViewUrl(websiteUrl, targetPath) : '');
+  const canOpenWebsite = isLive && Boolean(websiteViewUrl);
 
   const handleOpenWebsite = () => {
     if (!canOpenWebsite) return;
@@ -1485,9 +1503,15 @@ function App() {
         const publishedViewUrl =
           buildWebsiteViewUrlFromTrigger(data.triggerUrl) ||
           buildWebsiteViewUrl(normalizedWebsiteUrl, targetPath);
+        const nextPublishedSignature = buildPublishSignature(normalizedWebsiteUrl, finalSignature);
         setLastPublishedViewUrl(publishedViewUrl);
-        setLastPublishedSignature(buildPublishSignature(normalizedWebsiteUrl, finalSignature));
-        await saveCurrentProject();
+        setLastPublishedSignature(nextPublishedSignature);
+        await saveCurrentProject('', '', {
+          ...collectProjectState(),
+          isLive: true,
+          lastPublishedViewUrl: publishedViewUrl,
+          lastPublishedSignature: nextPublishedSignature,
+        });
       } else {
         setIsLive(false);
         setExportResult(`Fehler: ${mapDeployErrorToUserMessage(data?.error || data?.log || '')}`);
@@ -2247,7 +2271,7 @@ function App() {
               <input type="text" placeholder={serverPlaceholder} value={ftpServer} onChange={e => setFtpServer(e.target.value)} />
             </div>
             <div className="input-group" style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website-Adresse (optional)</label>
+              <label style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website-Adresse</label>
               <input
                 type="text"
                 placeholder="z.B. swiss-ai-community.ch"

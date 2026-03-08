@@ -944,27 +944,12 @@ const delay = (ms = 0) =>
     });
 
 const listPublicPagePaths = (contentRoot) => {
-    const listedPages = [];
+    const listedPages = listPagesForFlatsiteUi(contentRoot)
+        .map((page) => sanitizeSlug(page?.id))
+        .filter(Boolean)
+        .map((slug) => `/${slug}`);
 
-    if (fs.existsSync(contentRoot)) {
-        const dirs = fs
-            .readdirSync(contentRoot, { withFileTypes: true })
-            .filter((entry) => entry.isDirectory() && /^\d+_/.test(entry.name))
-            .map((entry) => entry.name)
-            .sort((a, b) => {
-                const aNum = parseInt(a.split('_')[0], 10) || 0;
-                const bNum = parseInt(b.split('_')[0], 10) || 0;
-                return aNum - bNum;
-            });
-
-        for (const dir of dirs) {
-            const slug = dir.replace(/^\d+_/, '').trim();
-            if (!slug || slug === 'error') continue;
-            listedPages.push(`/${slug}`);
-        }
-    }
-
-    return ['/', ...listedPages];
+    return ['/', ...new Set(listedPages)];
 };
 
 const normalizePathForFileOutput = (pathname = '/') => {
@@ -1867,6 +1852,14 @@ const collectCanonicalPagesFromContent = (
         const listedMatch = dirName.match(/^(\d+)_([\s\S]+)$/);
         const isLegacyDir = /-legacy(?:-\d+)?$/i.test(dirName);
         const hasDefaultTemplate = fs.existsSync(path.join(contentRoot, dirName, 'default.txt'));
+
+        const isManagedListed = isManagedListedDirName(dirName);
+        const looksLikeBrokenListed = /^\d+_/.test(dirName) && isManagedListed === false;
+
+        // Ignore broken listed folder names (e.g. "1_portfolio 2"), they are canonicalized away.
+        if (looksLikeBrokenListed) {
+            return;
+        }
 
         if (!listedMatch && (!hasDefaultTemplate || isLegacyDir)) {
             return;
