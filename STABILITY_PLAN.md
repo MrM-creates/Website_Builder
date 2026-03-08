@@ -45,14 +45,14 @@ Regel: Es wird immer nur die aktuelle Phase bearbeitet, keine Parallel-Themen.
 - [x] Jede Reparatur wird mit Projekt-ID geloggt.
 
 ## Phase 4: Server-Manager vereinheitlichen (1 Tag)
-- [ ] Ein Startmodell als Standard festlegen (kein Mischbetrieb).
-- [ ] Health-Checks für Node/Vite/PHP + klaren Recovery-Path definieren.
-- [ ] Safe-Mode UI bei Backend-Ausfall implementieren.
+- [x] Ein Startmodell als Standard festlegen (kein Mischbetrieb).
+- [x] Health-Checks für Node/Vite/PHP + klaren Recovery-Path definieren.
+- [x] Safe-Mode UI bei Backend-Ausfall implementieren.
 
 ### Definition of Done
-- [ ] 20 Start/Stop-Zyklen ohne Port-Leichen.
-- [ ] Bei Ausfall klare Meldung + "Diagnose starten".
-- [ ] Kein unkontrollierter Prozess-Kill im Normalpfad.
+- [x] 20 Start/Stop-Zyklen ohne Port-Leichen.
+- [x] Bei Ausfall klare Meldung + "Diagnose starten".
+- [x] Kein unkontrollierter Prozess-Kill im Normalpfad.
 
 ## Phase 5: Projektidentität robust machen (0.5 Tag)
 - [ ] UUID als Primär-ID erzwingen; Pfad nur als Attribut.

@@ -10,33 +10,6 @@ STACK_LOG_FILE="$LOG_DIR/stack.log"
 
 mkdir -p "$LOG_DIR" "$PID_DIR"
 
-stop_stack_pid() {
-  if [[ -f "$STACK_PID_FILE" ]]; then
-    local pid
-    pid="$(cat "$STACK_PID_FILE" 2>/dev/null || true)"
-    if [[ -n "${pid:-}" ]] && kill -0 "$pid" 2>/dev/null; then
-      kill "$pid" 2>/dev/null || true
-      sleep 0.5
-      kill -9 "$pid" 2>/dev/null || true
-    fi
-    rm -f "$STACK_PID_FILE"
-  fi
-}
-
-free_port() {
-  local port="$1"
-  local pids
-  pids="$(lsof -ti tcp:"$port" -sTCP:LISTEN 2>/dev/null || true)"
-  if [[ -n "$pids" ]]; then
-    echo "$pids" | xargs kill 2>/dev/null || true
-    sleep 0.5
-    pids="$(lsof -ti tcp:"$port" -sTCP:LISTEN 2>/dev/null || true)"
-    if [[ -n "$pids" ]]; then
-      echo "$pids" | xargs kill -9 2>/dev/null || true
-    fi
-  fi
-}
-
 http_code() {
   local url="$1"
   local code
@@ -72,9 +45,30 @@ wait_for_http() {
   return 1
 }
 
+assert_ports_free() {
+  local blocked=0
+  for p in 3001 5173 8000; do
+    local pids
+    pids="$(lsof -ti tcp:"$p" -sTCP:LISTEN 2>/dev/null || true)"
+    if [[ -n "$pids" ]]; then
+      blocked=1
+      echo "Port $p is already in use by pid(s): $pids"
+      lsof -nP -iTCP:"$p" -sTCP:LISTEN || true
+    fi
+  done
+
+  if [[ "$blocked" -eq 1 ]]; then
+    echo ""
+    echo "Cannot start managed stack while ports are occupied."
+    echo "Run: npm run dev:bg:stop"
+    echo "If still blocked, inspect with: npm run dev:bg:status"
+    return 1
+  fi
+}
+
 echo "Preparing clean background start..."
-stop_stack_pid
-for p in 3001 5173 8000; do free_port "$p"; done
+bash "$ROOT/scripts/dev-bg-stop.sh" >/dev/null || true
+assert_ports_free
 
 : > "$STACK_LOG_FILE"
 node "$ROOT/scripts/dev-bg-spawn.mjs" >/dev/null

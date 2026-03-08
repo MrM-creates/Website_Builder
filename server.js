@@ -872,6 +872,8 @@ const triggerRemoteUnzip = async (urls = []) => {
     };
 };
 
+const BACKEND_LOCAL_ORIGIN = 'http://127.0.0.1:3001';
+const FRONTEND_LOCAL_ORIGIN = 'http://127.0.0.1:5173';
 const KIRBY_LOCAL_ORIGIN = 'http://127.0.0.1:8000';
 const LOCAL_ORIGIN_CANDIDATES = [
     'http://127.0.0.1:5173',
@@ -1027,6 +1029,36 @@ const isKirbyReachable = async () => {
         return response.ok || response.status === 302;
     } catch {
         return false;
+    }
+};
+
+const probeHttpService = async (
+    service,
+    url,
+    { acceptedStatus = [200], timeoutMs = 2500 } = {}
+) => {
+    const startedAt = Date.now();
+    try {
+        const response = await fetchWithTimeout(url, timeoutMs);
+        const status = Number(response.status || 0);
+        const up = acceptedStatus.includes(status);
+        return {
+            service,
+            url,
+            up,
+            status,
+            latencyMs: Date.now() - startedAt,
+            error: up ? null : `unexpected status ${status}`
+        };
+    } catch (error) {
+        return {
+            service,
+            url,
+            up: false,
+            status: 0,
+            latencyMs: Date.now() - startedAt,
+            error: String(error?.name === 'AbortError' ? 'timeout' : error?.message || 'unreachable')
+        };
     }
 };
 
@@ -1824,6 +1856,51 @@ const listProjects = () => {
 
     return projects;
 };
+
+app.get('/api/system/health', async (req, res) => {
+    try {
+        const [backend, frontend, kirby] = await Promise.all([
+            probeHttpService('backend', `${BACKEND_LOCAL_ORIGIN}/api/project-signature`, {
+                acceptedStatus: [200],
+                timeoutMs: 1800
+            }),
+            probeHttpService('frontend', `${FRONTEND_LOCAL_ORIGIN}/`, {
+                acceptedStatus: [200],
+                timeoutMs: 1800
+            }),
+            probeHttpService('kirby', `${KIRBY_LOCAL_ORIGIN}/`, {
+                acceptedStatus: [200, 302],
+                timeoutMs: 2200
+            })
+        ]);
+
+        const allHealthy = backend.up && frontend.up && kirby.up;
+        const recoverySteps = allHealthy
+            ? []
+            : [
+                'npm run dev:bg:ensure',
+                'npm run dev:bg:status',
+                'npm run dev:bg:logs'
+            ];
+
+        res.json({
+            success: allHealthy,
+            health: { backend, frontend, kirby },
+            recoverySteps
+        });
+    } catch (error) {
+        res.json({
+            success: false,
+            health: null,
+            recoverySteps: [
+                'npm run dev:bg:ensure',
+                'npm run dev:bg:status',
+                'npm run dev:bg:logs'
+            ],
+            error: String(error?.message || 'health-check failed')
+        });
+    }
+});
 
 app.post('/api/system/pick-folder', express.json(), async (req, res) => {
     const prompt = String(req.body?.prompt || 'Wähle einen Ordner');

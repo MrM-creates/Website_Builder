@@ -371,6 +371,10 @@ function App() {
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [isOpeningProject, setIsOpeningProject] = useState(false);
   const [projectError, setProjectError] = useState('');
+  const [safeMode, setSafeMode] = useState(false);
+  const [backendFailureCount, setBackendFailureCount] = useState(0);
+  const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
+  const [diagnostics, setDiagnostics] = useState(null);
 
   // Refs
   const editInputRef = useRef(null);
@@ -753,6 +757,82 @@ function App() {
     return `${normalized.slice(0, 30)}...${normalized.slice(-30)}`;
   };
 
+  const fetchJsonWithTimeout = async (url, options = {}, timeoutMs = 2500) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : {};
+      return { response, data };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const probeUrlReachable = async (url, timeoutMs = 1600) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      await fetch(url, { mode: 'no-cors', cache: 'no-store', signal: controller.signal });
+      return true;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const runSystemDiagnostics = async () => {
+    setIsRunningDiagnostics(true);
+    try {
+      try {
+        const { data } = await fetchJsonWithTimeout(`${BACKEND_URL}/api/system/health`, {}, 3000);
+        if (data?.health) {
+          setDiagnostics({
+            source: 'backend',
+            health: data.health,
+            recoverySteps: Array.isArray(data?.recoverySteps) ? data.recoverySteps : [],
+          });
+          setSafeMode(!(data?.success === true));
+          if (data?.success === true) {
+            setBackendFailureCount(0);
+          }
+          return;
+        }
+      } catch {
+        // fallback below
+      }
+
+      const [backendUp, frontendUp, kirbyUp] = await Promise.all([
+        probeUrlReachable('http://127.0.0.1:3001/api/project-signature'),
+        probeUrlReachable('http://127.0.0.1:5173/'),
+        probeUrlReachable('http://127.0.0.1:8000/'),
+      ]);
+
+      setDiagnostics({
+        source: 'browser-fallback',
+        health: {
+          backend: { service: 'backend', up: backendUp, status: backendUp ? 200 : 0, error: backendUp ? null : 'unreachable' },
+          frontend: { service: 'frontend', up: frontendUp, status: frontendUp ? 200 : 0, error: frontendUp ? null : 'unreachable' },
+          kirby: { service: 'kirby', up: kirbyUp, status: kirbyUp ? 302 : 0, error: kirbyUp ? null : 'unreachable' },
+        },
+        recoverySteps: [
+          'npm run dev:bg:ensure',
+          'npm run dev:bg:status',
+          'npm run dev:bg:logs',
+        ],
+      });
+      setSafeMode(!(backendUp && frontendUp && kirbyUp));
+      if (backendUp) setBackendFailureCount(0);
+    } finally {
+      setIsRunningDiagnostics(false);
+    }
+  };
+
   /* ---- Effects ---- */
   useEffect(() => {
     if (editingPageId && editInputRef.current) {
@@ -810,6 +890,43 @@ function App() {
     refreshProjects();
     fetchProjectPreferences();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const probeBackend = async () => {
+      try {
+        await fetchJsonWithTimeout(`${BACKEND_URL}/api/project-signature`, {}, 1800);
+        if (cancelled) return;
+        setBackendFailureCount(0);
+        setDiagnostics(null);
+        setSafeMode(false);
+      } catch {
+        if (cancelled) return;
+        setBackendFailureCount((prev) => {
+          const next = prev + 1;
+          if (next >= 3) {
+            setSafeMode(true);
+          }
+          return next;
+        });
+      }
+    };
+
+    probeBackend();
+    const intervalId = setInterval(probeBackend, 4000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!safeMode || isRunningDiagnostics) return;
+    if (diagnostics?.health) return;
+    runSystemDiagnostics().catch(() => {});
+  }, [safeMode]);
 
   useEffect(() => {
     if (step !== 'editor') return;
@@ -1471,12 +1588,118 @@ function App() {
       String(ftpPort || '').trim().length > 0,
     editor: step === 'editor' || setupDone || kirbyReady,
   };
+  const diagnosticServices = diagnostics?.health
+    ? [
+      diagnostics.health.backend,
+      diagnostics.health.frontend,
+      diagnostics.health.kirby,
+    ].filter(Boolean)
+    : [];
 
   /* ========================================================================
      RENDER
      ======================================================================== */
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: 'var(--bg-color)' }}>
+      {safeMode && (
+        <div style={{
+          position: 'fixed',
+          right: '1rem',
+          bottom: '1rem',
+          width: 'min(520px, calc(100vw - 2rem))',
+          zIndex: 1000,
+          border: '1px solid rgba(255,87,87,0.45)',
+          background: 'rgba(23, 8, 8, 0.96)',
+          borderRadius: '12px',
+          padding: '1rem 1rem 0.9rem',
+          color: '#ffd6d6',
+          boxShadow: '0 16px 42px rgba(0,0,0,0.55)'
+        }}>
+          <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.4rem' }}>
+            Server reagiert nicht stabil
+          </div>
+          <div style={{ color: '#ffbcbc', fontSize: '0.84rem', marginBottom: '0.75rem', lineHeight: 1.4 }}>
+            Backend war mehrfach nicht erreichbar. Starte die Systemdiagnose und folge den Recovery-Schritten.
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+            <button
+              type="button"
+              onClick={runSystemDiagnostics}
+              disabled={isRunningDiagnostics}
+              style={{
+                background: '#ff4d4f',
+                border: 'none',
+                color: 'white',
+                padding: '0.46rem 0.78rem',
+                borderRadius: '8px',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: isRunningDiagnostics ? 'not-allowed' : 'pointer',
+                opacity: isRunningDiagnostics ? 0.65 : 1
+              }}
+            >
+              {isRunningDiagnostics ? 'Diagnose läuft…' : 'Systemdiagnose starten'}
+            </button>
+
+            <button
+              type="button"
+              onClick={runSystemDiagnostics}
+              disabled={isRunningDiagnostics}
+              style={{
+                background: 'transparent',
+                border: '1px solid rgba(255,255,255,0.25)',
+                color: '#ffd6d6',
+                padding: '0.46rem 0.72rem',
+                borderRadius: '8px',
+                fontSize: '0.8rem',
+                cursor: isRunningDiagnostics ? 'not-allowed' : 'pointer',
+                opacity: isRunningDiagnostics ? 0.65 : 1
+              }}
+            >
+              Erneut prüfen
+            </button>
+          </div>
+
+          {diagnosticServices.length > 0 && (
+            <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.7rem' }}>
+              {diagnosticServices.map((service) => {
+                const up = Boolean(service?.up);
+                const label = String(service?.service || 'service');
+                return (
+                  <span
+                    key={label}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      fontSize: '0.76rem',
+                      padding: '0.26rem 0.52rem',
+                      borderRadius: '999px',
+                      background: up ? 'rgba(80,200,120,0.16)' : 'rgba(255,87,87,0.16)',
+                      color: up ? '#9ff0bf' : '#ffb5b5',
+                      border: `1px solid ${up ? 'rgba(80,200,120,0.35)' : 'rgba(255,87,87,0.35)'}`
+                    }}
+                  >
+                    <span>{label}</span>
+                    <strong>{up ? 'OK' : 'DOWN'}</strong>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+
+          <div style={{ fontSize: '0.74rem', color: '#e4b3b3', lineHeight: 1.5 }}>
+            Recovery:
+            {diagnostics?.recoverySteps?.map((stepCmd) => (
+              <div key={stepCmd}><code>{stepCmd}</code></div>
+            ))}
+            {!diagnostics?.recoverySteps?.length && (
+              <div><code>npm run dev:bg:ensure</code></div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ================================================================
           TOP NAVIGATION BAR (visible after welcome)
