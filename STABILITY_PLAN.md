@@ -66,7 +66,7 @@ Regel: Es wird immer nur die aktuelle Phase bearbeitet, keine Parallel-Themen.
 ## Phase 6: Deploy-Absicherung (1 Tag)
 - [ ] Staging-Upload + validiertes Entpacken robust machen.
 - [ ] Hostpoint-kompatiblen Swap/Fallback finalisieren (ohne Symlink-Zwang).
-- [ ] Publish-Status erst nach verifiziertem Erfolg setzen.
+- [x] Publish-Status erst nach verifiziertem Erfolg setzen.
 
 ### Definition of Done
 - [ ] 10 Deploys hintereinander erfolgreich.

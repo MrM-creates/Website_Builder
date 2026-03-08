@@ -173,6 +173,12 @@ const mapDeployErrorToUserMessage = (raw = '') => {
   if (lower.includes('tls') || lower.includes('ssl') || lower.includes('handshake') || lower.includes('eproto')) {
     return 'TLS/SSL-Fehler. Bitte Port und Verbindungsart (FTP/FTPES oder SFTP) prüfen.';
   }
+  if (lower.includes('deployment laeuft bereits') || lower.includes('deployment läuft bereits')) {
+    return 'Es läuft bereits eine Veröffentlichung. Bitte kurz warten und dann erneut versuchen.';
+  }
+  if (lower.includes('startdatei') || lower.includes('index.html oder index.php')) {
+    return 'Upload abgeschlossen, aber keine Startseite im Speicherort gefunden. Bitte Speicherort und Domain-Zuordnung prüfen.';
+  }
   if (lower.includes('553') || lower.includes('550') || lower.includes('no such file') || lower.includes('not found')) {
     return 'Speicherort nicht gefunden oder nicht erreichbar. Bitte den Speicherort prüfen.';
   }

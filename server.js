@@ -683,6 +683,62 @@ const createDeployZip = async (sourceFolder, zipPath) => {
     await execPromise(`cd ${source} && zip -qr ${zip} . -x "site/sessions/*"`);
 };
 
+const DEPLOY_START_FILE_CANDIDATES = ['index.html', 'index.php'];
+let deployInProgress = false;
+
+const ensureLocalExportHasStartFile = (sourceFolder = '') => {
+    for (const fileName of DEPLOY_START_FILE_CANDIDATES) {
+        if (fs.existsSync(path.join(sourceFolder, fileName))) {
+            return fileName;
+        }
+    }
+    throw new Error('Export enthaelt keine Startdatei (index.html oder index.php)');
+};
+
+const waitForRemoteStartFileFtp = async (client, { attempts = 3, delayMs = 600 } = {}) => {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+        const entries = await client.list();
+        const names = new Set(entries.map((entry) => String(entry?.name || '').toLowerCase()));
+        for (const candidate of DEPLOY_START_FILE_CANDIDATES) {
+            if (names.has(candidate.toLowerCase())) {
+                return candidate;
+            }
+        }
+
+        if (attempt < attempts - 1) {
+            await delay(delayMs);
+        }
+    }
+
+    throw new Error(
+        'Upload abgeschlossen, aber im Speicherort fehlt eine Startdatei (index.html oder index.php). Bitte Speicherort/Domain-Zuordnung pruefen.'
+    );
+};
+
+const waitForRemoteStartFileSftp = async (
+    sftp,
+    remoteRoot = '/',
+    { attempts = 3, delayMs = 600 } = {}
+) => {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+        for (const candidate of DEPLOY_START_FILE_CANDIDATES) {
+            const remotePath = path.posix.join(remoteRoot, candidate);
+            const exists = await sftp.exists(remotePath);
+            if (exists) {
+                return candidate;
+            }
+        }
+
+        if (attempt < attempts - 1) {
+            await delay(delayMs);
+        }
+    }
+
+    throw new Error(
+        'Upload abgeschlossen, aber im Speicherort fehlt eine Startdatei (index.html oder index.php). Bitte Speicherort/Domain-Zuordnung pruefen.'
+    );
+};
+
 const buildUnzipScript = (token) => `<?php
 declare(strict_types=1);
 
@@ -2357,10 +2413,19 @@ app.post('/api/deploy', async (req, res) => {
     let sourceFolder = '';
     let cleanupStaticExport = () => {};
 
+    if (deployInProgress) {
+        return res.status(409).json({
+            error: 'Ein Deployment laeuft bereits. Bitte kurz warten und erneut versuchen.'
+        });
+    }
+
+    deployInProgress = true;
+
     try {
         normalizedTargetPath = normalizeTargetPath(targetPath);
         normalizedWebsiteUrl = normalizeWebsiteUrl(websiteUrl);
     } catch (error) {
+        deployInProgress = false;
         return res.status(400).json({ error: error.message || 'Ungueltige Deploy-Parameter' });
     }
 
@@ -2379,6 +2444,7 @@ app.post('/api/deploy', async (req, res) => {
         });
         sourceFolder = staticExport.sourceFolder;
         cleanupStaticExport = staticExport.cleanup;
+        ensureLocalExportHasStartFile(sourceFolder);
 
         console.log(`Static Export erstellt (${staticExport.pageCount} Seiten): ${sourceFolder}`);
         console.log(`Starte Deployment zu ${host} auf Port ${parsedPort} (Zielpfad: ${normalizedTargetPath})...`);
@@ -2386,24 +2452,29 @@ app.post('/api/deploy', async (req, res) => {
         if (parsedPort === 22) {
             // SFTP (SSH Protocol) via ssh2-sftp-client
             const sftp = new SftpClient();
-            await sftp.connect({
-                host: host,
-                port: 22,
-                username: user,
-                password: password,
-                readyTimeout: 10000 // 10 seconds timeout
-            });
-            console.log("SFTP Verbindung hergestellt! Lade Dateien hoch...");
+            try {
+                await sftp.connect({
+                    host: host,
+                    port: 22,
+                    username: user,
+                    password: password,
+                    readyTimeout: 10000 // 10 seconds timeout
+                });
+                console.log("SFTP Verbindung hergestellt! Lade Dateien hoch...");
 
-            await sftp.mkdir(normalizedTargetPath, true);
-            // Upload the entire directory
-            await sftp.uploadDir(sourceFolder, normalizedTargetPath);
-            console.log("SFTP Upload erfolgreich.");
-            await sftp.end();
+                await sftp.mkdir(normalizedTargetPath, true);
+                // Upload the entire directory
+                await sftp.uploadDir(sourceFolder, normalizedTargetPath);
+                const verifiedStartFile = await waitForRemoteStartFileSftp(sftp, normalizedTargetPath);
+                console.log(`SFTP Upload erfolgreich (Startdatei: ${verifiedStartFile}).`);
+            } finally {
+                await sftp.end().catch(() => {});
+            }
             res.json({
                 success: true,
                 mode: 'direct',
                 targetPath: normalizedTargetPath,
+                verifiedStartFile: true,
                 log: `Erfolgreich nach ${host} (via SFTP) hochgeladen. Zielpfad: ${normalizedTargetPath}`
             });
 
@@ -2412,85 +2483,92 @@ app.post('/api/deploy', async (req, res) => {
             // Hostpoint Erfordert oft explizites FTPES (FTP over explicit TLS) auf Port 21
             const client = new Client();
             // client.ftp.verbose = true;
-            await client.access({
-                host: host,
-                user: user,
-                password: password,
-                port: parsedPort || 21,
-                secure: true,
-                secureOptions: { rejectUnauthorized: false }
-            });
+            try {
+                await client.access({
+                    host: host,
+                    user: user,
+                    password: password,
+                    port: parsedPort || 21,
+                    secure: true,
+                    secureOptions: { rejectUnauthorized: false }
+                });
 
-            const wantsZip = deployMode === 'zip' || (deployMode === 'auto' && Boolean(normalizedWebsiteUrl));
-            const archiveName = 'flatsite-deploy.zip';
+                const wantsZip = deployMode === 'zip' || (deployMode === 'auto' && Boolean(normalizedWebsiteUrl));
+                const archiveName = 'flatsite-deploy.zip';
 
-            console.log(`FTPES Verbindung hergestellt. Modus: ${wantsZip ? 'ZIP' : 'DIRECT'}`);
+                console.log(`FTPES Verbindung hergestellt. Modus: ${wantsZip ? 'ZIP' : 'DIRECT'}`);
 
-            await client.ensureDir(normalizedTargetPath);
+                await client.ensureDir(normalizedTargetPath);
 
-            if (wantsZip) {
-                const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flatsite-deploy-'));
-                const zipPath = path.join(tmpDir, archiveName);
-                const token = crypto.randomBytes(24).toString('hex');
-                const unzipScriptPath = path.join(tmpDir, 'flatsite-unzip.php');
+                if (wantsZip) {
+                    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flatsite-deploy-'));
+                    const zipPath = path.join(tmpDir, archiveName);
+                    const token = crypto.randomBytes(24).toString('hex');
+                    const unzipScriptPath = path.join(tmpDir, 'flatsite-unzip.php');
 
-                try {
-                    await createDeployZip(sourceFolder, zipPath);
-                    fs.writeFileSync(unzipScriptPath, buildUnzipScript(token), 'utf-8');
+                    try {
+                        await createDeployZip(sourceFolder, zipPath);
+                        fs.writeFileSync(unzipScriptPath, buildUnzipScript(token), 'utf-8');
 
-                    await client.uploadFrom(zipPath, archiveName);
-                    await client.uploadFrom(unzipScriptPath, 'flatsite-unzip.php');
+                        await client.uploadFrom(zipPath, archiveName);
+                        await client.uploadFrom(unzipScriptPath, 'flatsite-unzip.php');
 
-                    const triggerUrls = buildUnzipTriggerUrls({
-                        websiteUrl: normalizedWebsiteUrl,
-                        host,
-                        targetPath: normalizedTargetPath,
-                        token,
-                        archive: archiveName
-                    });
+                        const triggerUrls = buildUnzipTriggerUrls({
+                            websiteUrl: normalizedWebsiteUrl,
+                            host,
+                            targetPath: normalizedTargetPath,
+                            token,
+                            archive: archiveName
+                        });
 
-                    const triggerResult = await triggerRemoteUnzip(triggerUrls);
+                        const triggerResult = await triggerRemoteUnzip(triggerUrls);
 
-                    if (triggerResult.ok) {
-                        client.close();
+                        if (triggerResult.ok) {
+                            const verifiedStartFile = await waitForRemoteStartFileFtp(client);
+                            res.json({
+                                success: true,
+                                mode: 'zip',
+                                targetPath: normalizedTargetPath,
+                                triggerUrl: triggerResult.url,
+                                verifiedStartFile,
+                                log: `Erfolgreich nach ${host} (via FTPES, ZIP) deployed. ZIP wurde serverseitig entpackt. Zielpfad: ${normalizedTargetPath}. Trigger: ${triggerResult.url}`
+                            });
+                            return;
+                        }
+
+                        console.warn('ZIP Trigger fehlgeschlagen, fallback auf Direkt-Upload...', triggerResult.attempts);
+
+                        await client.ensureDir(normalizedTargetPath);
+                        await client.uploadFromDir(sourceFolder, '.');
+                        const verifiedStartFile = await waitForRemoteStartFileFtp(client);
+
                         res.json({
                             success: true,
-                            mode: 'zip',
+                            mode: 'direct-fallback',
                             targetPath: normalizedTargetPath,
-                            triggerUrl: triggerResult.url,
-                            log: `Erfolgreich nach ${host} (via FTPES, ZIP) deployed. ZIP wurde serverseitig entpackt. Zielpfad: ${normalizedTargetPath}. Trigger: ${triggerResult.url}`
+                            verifiedStartFile,
+                            warning: 'ZIP Upload war erfolgreich, automatisches Entpacken aber nicht erreichbar. Fallback Direkt-Upload wurde ausgeführt.',
+                            attempts: triggerResult.attempts,
+                            log: `Erfolgreich nach ${host} (via FTPES) hochgeladen. ZIP-Trigger nicht erreichbar, daher Fallback Direkt-Upload. Zielpfad: ${normalizedTargetPath}`
                         });
                         return;
+                    } finally {
+                        fs.rmSync(tmpDir, { recursive: true, force: true });
                     }
-
-                    console.warn('ZIP Trigger fehlgeschlagen, fallback auf Direkt-Upload...', triggerResult.attempts);
-
-                    await client.ensureDir(normalizedTargetPath);
-                    await client.uploadFromDir(sourceFolder, '.');
-
-                    client.close();
-                    res.json({
-                        success: true,
-                        mode: 'direct-fallback',
-                        targetPath: normalizedTargetPath,
-                        warning: 'ZIP Upload war erfolgreich, automatisches Entpacken aber nicht erreichbar. Fallback Direkt-Upload wurde ausgeführt.',
-                        attempts: triggerResult.attempts,
-                        log: `Erfolgreich nach ${host} (via FTPES) hochgeladen. ZIP-Trigger nicht erreichbar, daher Fallback Direkt-Upload. Zielpfad: ${normalizedTargetPath}`
-                    });
-                    return;
-                } finally {
-                    fs.rmSync(tmpDir, { recursive: true, force: true });
                 }
-            }
 
-            await client.uploadFromDir(sourceFolder, '.');
-            client.close();
-            res.json({
-                success: true,
-                mode: 'direct',
-                targetPath: normalizedTargetPath,
-                log: `Erfolgreich nach ${host} (via FTPES) hochgeladen. Zielpfad: ${normalizedTargetPath}`
-            });
+                await client.uploadFromDir(sourceFolder, '.');
+                const verifiedStartFile = await waitForRemoteStartFileFtp(client);
+                res.json({
+                    success: true,
+                    mode: 'direct',
+                    targetPath: normalizedTargetPath,
+                    verifiedStartFile,
+                    log: `Erfolgreich nach ${host} (via FTPES) hochgeladen. Zielpfad: ${normalizedTargetPath}`
+                });
+            } finally {
+                client.close();
+            }
         }
 
     } catch (err) {
@@ -2502,6 +2580,7 @@ app.post('/api/deploy', async (req, res) => {
         } catch {
             // ignore cleanup errors
         }
+        deployInProgress = false;
     }
 });
 
