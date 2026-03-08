@@ -695,9 +695,105 @@ const ensureLocalExportHasStartFile = (sourceFolder = '') => {
     throw new Error('Export enthaelt keine Startdatei (index.html oder index.php)');
 };
 
-const waitForRemoteStartFileFtp = async (client, { attempts = 3, delayMs = 600 } = {}) => {
+const isFtpDirectoryEntry = (entry) => {
+    if (!entry) return false;
+    if (typeof entry.isDirectory === 'function') return entry.isDirectory();
+    return Number(entry.type) === 2;
+};
+
+const isFtpFileEntry = (entry) => {
+    if (!entry) return false;
+    if (typeof entry.isFile === 'function') return entry.isFile();
+    return Number(entry.type) === 1;
+};
+
+const getFtpEntry = async (client, remotePath = '/') => {
+    const normalized = normalizeTargetPath(remotePath);
+    if (normalized === '/') {
+        return { exists: true, isDir: true, isFile: false, name: '/' };
+    }
+
+    const parent = path.posix.dirname(normalized) || '/';
+    const base = path.posix.basename(normalized);
+
+    try {
+        const entries = await client.list(parent);
+        const entry = entries.find((item) => String(item?.name || '') === base);
+        if (!entry) {
+            return { exists: false, isDir: false, isFile: false, name: base };
+        }
+        return {
+            exists: true,
+            isDir: isFtpDirectoryEntry(entry),
+            isFile: isFtpFileEntry(entry),
+            name: base
+        };
+    } catch {
+        return { exists: false, isDir: false, isFile: false, name: base };
+    }
+};
+
+const removeFtpPathIfExists = async (client, remotePath = '/') => {
+    const normalized = normalizeTargetPath(remotePath);
+    if (normalized === '/') return;
+
+    const entry = await getFtpEntry(client, normalized);
+    if (!entry.exists) return;
+
+    if (entry.isDir) {
+        await client.removeDir(normalized);
+        return;
+    }
+
+    await client.remove(normalized);
+};
+
+const promoteFtpStagingDirectory = async (
+    client,
+    { targetPath = '/', stagingPath = '/', deployId = '' } = {}
+) => {
+    const normalizedTarget = normalizeTargetPath(targetPath);
+    const normalizedStaging = normalizeTargetPath(stagingPath);
+
+    if (normalizedTarget === '/' || normalizedTarget === normalizedStaging) {
+        return { swapped: false, targetPath: normalizedTarget };
+    }
+
+    const backupPath = `${normalizedTarget}.backup-${deployId || Date.now()}`;
+    const targetEntry = await getFtpEntry(client, normalizedTarget);
+
+    try {
+        await removeFtpPathIfExists(client, backupPath);
+
+        if (targetEntry.exists) {
+            await client.rename(normalizedTarget, backupPath);
+        }
+
+        await client.rename(normalizedStaging, normalizedTarget);
+
+        await removeFtpPathIfExists(client, backupPath);
+        return { swapped: true, targetPath: normalizedTarget };
+    } catch (error) {
+        try {
+            const backupEntry = await getFtpEntry(client, backupPath);
+            const targetNow = await getFtpEntry(client, normalizedTarget);
+            if (backupEntry.exists && !targetNow.exists) {
+                await client.rename(backupPath, normalizedTarget);
+            }
+        } catch {
+            // ignore rollback errors
+        }
+        throw new Error(`Staging-Swap fehlgeschlagen (${error?.message || 'unbekannt'})`);
+    }
+};
+
+const waitForRemoteStartFileFtp = async (
+    client,
+    { remotePath = '/', attempts = 3, delayMs = 600 } = {}
+) => {
+    const normalizedRemotePath = normalizeTargetPath(remotePath);
     for (let attempt = 0; attempt < attempts; attempt += 1) {
-        const entries = await client.list();
+        const entries = await client.list(normalizedRemotePath);
         const names = new Set(entries.map((entry) => String(entry?.name || '').toLowerCase()));
         for (const candidate of DEPLOY_START_FILE_CANDIDATES) {
             if (names.has(candidate.toLowerCase())) {
@@ -2487,11 +2583,19 @@ app.post('/api/deploy', async (req, res) => {
                 });
 
                 const wantsZip = deployMode === 'zip' || (deployMode === 'auto' && Boolean(normalizedWebsiteUrl));
+                const deployId = Date.now();
+                const supportsStagingSwap = normalizedTargetPath !== '/';
+                const stagingPath = supportsStagingSwap
+                    ? normalizeTargetPath(`${normalizedTargetPath}.staging-${deployId}`)
+                    : normalizedTargetPath;
                 const archiveName = 'flatsite-deploy.zip';
 
                 console.log(`FTPES Verbindung hergestellt. Modus: ${wantsZip ? 'ZIP' : 'DIRECT'}`);
 
-                await client.ensureDir(normalizedTargetPath);
+                if (supportsStagingSwap) {
+                    await removeFtpPathIfExists(client, stagingPath);
+                }
+                await client.ensureDir(stagingPath);
 
                 if (wantsZip) {
                     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flatsite-deploy-'));
@@ -2509,7 +2613,7 @@ app.post('/api/deploy', async (req, res) => {
                         const triggerUrls = buildUnzipTriggerUrls({
                             websiteUrl: normalizedWebsiteUrl,
                             host,
-                            targetPath: normalizedTargetPath,
+                            targetPath: stagingPath,
                             token,
                             archive: archiveName
                         });
@@ -2517,7 +2621,19 @@ app.post('/api/deploy', async (req, res) => {
                         const triggerResult = await triggerRemoteUnzip(triggerUrls);
 
                         if (triggerResult.ok) {
-                            const verifiedStartFile = await waitForRemoteStartFileFtp(client);
+                            const verifiedStartFile = await waitForRemoteStartFileFtp(client, {
+                                remotePath: stagingPath
+                            });
+                            if (supportsStagingSwap) {
+                                await promoteFtpStagingDirectory(client, {
+                                    targetPath: normalizedTargetPath,
+                                    stagingPath,
+                                    deployId
+                                });
+                                await waitForRemoteStartFileFtp(client, {
+                                    remotePath: normalizedTargetPath
+                                });
+                            }
                             res.json({
                                 success: true,
                                 mode: 'zip',
@@ -2531,9 +2647,24 @@ app.post('/api/deploy', async (req, res) => {
 
                         console.warn('ZIP Trigger fehlgeschlagen, fallback auf Direkt-Upload...', triggerResult.attempts);
 
-                        await client.ensureDir(normalizedTargetPath);
+                        if (supportsStagingSwap) {
+                            await removeFtpPathIfExists(client, stagingPath);
+                        }
+                        await client.ensureDir(stagingPath);
                         await client.uploadFromDir(sourceFolder, '.');
-                        const verifiedStartFile = await waitForRemoteStartFileFtp(client);
+                        const verifiedStartFile = await waitForRemoteStartFileFtp(client, {
+                            remotePath: stagingPath
+                        });
+                        if (supportsStagingSwap) {
+                            await promoteFtpStagingDirectory(client, {
+                                targetPath: normalizedTargetPath,
+                                stagingPath,
+                                deployId
+                            });
+                            await waitForRemoteStartFileFtp(client, {
+                                remotePath: normalizedTargetPath
+                            });
+                        }
 
                         res.json({
                             success: true,
@@ -2551,7 +2682,19 @@ app.post('/api/deploy', async (req, res) => {
                 }
 
                 await client.uploadFromDir(sourceFolder, '.');
-                const verifiedStartFile = await waitForRemoteStartFileFtp(client);
+                const verifiedStartFile = await waitForRemoteStartFileFtp(client, {
+                    remotePath: stagingPath
+                });
+                if (supportsStagingSwap) {
+                    await promoteFtpStagingDirectory(client, {
+                        targetPath: normalizedTargetPath,
+                        stagingPath,
+                        deployId
+                    });
+                    await waitForRemoteStartFileFtp(client, {
+                        remotePath: normalizedTargetPath
+                    });
+                }
                 res.json({
                     success: true,
                     mode: 'direct',
