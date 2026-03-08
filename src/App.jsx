@@ -1618,6 +1618,7 @@ function App() {
       String(ftpPort || '').trim().length > 0,
     editor: step === 'editor' || setupDone || kirbyReady,
   };
+  const projectNameInHeader = projectName.trim() || (currentProjectId ? 'Unbenanntes Projekt' : '');
   const diagnosticServices = diagnostics?.health
     ? [
       diagnostics.health.backend,
@@ -1740,7 +1741,7 @@ function App() {
           borderBottom: '1px solid var(--border-color)', borderRadius: 0, position: 'sticky', top: 0, zIndex: 10
         }}>
           {/* Logo */}
-          <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', minWidth: 0 }}>
             <div style={{
               fontWeight: 800, fontSize: '1.2rem', letterSpacing: '-0.5px', cursor: 'pointer',
               background: 'linear-gradient(135deg, var(--text-primary) 0%, rgba(255,255,255,0.5) 100%)',
@@ -1748,6 +1749,27 @@ function App() {
             }} onClick={() => { setShowProjectList(false); setProjectError(''); setStep('welcome'); }}>
               Flatsite
             </div>
+            {projectNameInHeader && (
+              <span
+                title={projectNameInHeader}
+                style={{
+                  display: 'inline-block',
+                  maxWidth: '240px',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  fontSize: '0.9rem',
+                  fontWeight: 700,
+                  color: 'var(--text-primary)',
+                  padding: '0.2rem 0.55rem',
+                  borderRadius: '7px',
+                  border: '1px solid var(--border-color)',
+                  background: 'rgba(255,255,255,0.05)'
+                }}
+              >
+                {projectNameInHeader}
+              </span>
+            )}
           </div>
 
           {/* Navigation Links */}
