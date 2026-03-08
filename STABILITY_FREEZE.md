@@ -9,4 +9,4 @@ Branch: `codex/pages-ftp-fixes-2026-03-04`
 - Änderungen nur in den Phasen 0-7 des Stabilitätsplans und mit DoD-Abnahme.
 
 ## Aktive Phase
-- Phase 3: Kanonisierung & Migration.
+- Phase 4: Server-Manager vereinheitlichen.

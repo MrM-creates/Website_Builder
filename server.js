@@ -27,6 +27,8 @@ const DEFAULT_ADMIN_BCRYPT = '$2y$12$KtDqJZUN.tjtrv9dktoYS.4F6PYxZtEvM0t3rxGzEfj
 const FLATSITE_DIR = path.join(__dirname, '.flatsite');
 const STORAGE_CONFIG_FILE = path.join(FLATSITE_DIR, 'config.json');
 const ACTIVE_PROJECT_FILE = path.join(FLATSITE_DIR, 'active-project.json');
+const REPAIR_LOG_FILE = path.join(FLATSITE_DIR, 'repair-events.log');
+const PROJECT_RECOVERY_DIR_NAME = '_recovery';
 const LIVE_CONTENT_DIR = path.join(__dirname, 'kirby-cms', 'content');
 const LIVE_CUSTOM_CSS_PATH = path.join(__dirname, 'kirby-cms', 'assets', 'css', 'custom.css');
 
@@ -422,14 +424,33 @@ const upsertPageContentFile = (contentDir, title) => {
     fs.writeFileSync(txtFilePath, fileContent, 'utf-8');
 };
 
-const removeDefaultTemplateArtifacts = (contentDir) => {
+const removeDefaultTemplateArtifacts = (
+    contentDir,
+    {
+        contentRoot = '',
+        recoveryRoot = '',
+        projectPath = '',
+        projectId = ''
+    } = {}
+) => {
     if (!fs.existsSync(contentDir)) return;
     for (const entry of fs.readdirSync(contentDir)) {
         if (!/^default\s+.+\.txt$/i.test(entry)) continue;
         const absolute = path.join(contentDir, entry);
         try {
             if (fs.statSync(absolute).isFile()) {
-                fs.rmSync(absolute, { force: true });
+                if (recoveryRoot && contentRoot) {
+                    movePathToRecovery({
+                        absolutePath: absolute,
+                        contentRoot,
+                        projectPath,
+                        projectId,
+                        recoveryRoot,
+                        reason: 'default-template-artifact-moved'
+                    });
+                } else {
+                    fs.rmSync(absolute, { force: true });
+                }
             }
         } catch {
             // ignore individual artifact cleanup failures
@@ -442,10 +463,23 @@ const findMatchingDirForSlug = (dirs, slug, used = new Set()) => {
     return dirs.find((entry) => used.has(entry) === false && slugPattern.test(entry)) || null;
 };
 
-const syncPagesInContent = (contentRoot, rawPages = []) => {
+const syncPagesInContent = (
+    contentRoot,
+    rawPages = [],
+    { projectPath = '', projectId = '' } = {}
+) => {
     if (!fs.existsSync(contentRoot)) {
         fs.mkdirSync(contentRoot, { recursive: true });
     }
+
+    let recoveryRoot = '';
+    const getRecoveryRoot = () => {
+        if (!projectPath) return '';
+        if (!recoveryRoot) {
+            recoveryRoot = ensureProjectRecoveryDir(projectPath);
+        }
+        return recoveryRoot;
+    };
 
     const normalizedPages = normalizeOnboardingPages(rawPages);
 
@@ -508,6 +542,21 @@ const syncPagesInContent = (contentRoot, rawPages = []) => {
     for (const op of stagedRenames) {
         const fromPath = path.join(contentRoot, op.tempName);
         const toPath = path.join(contentRoot, op.to);
+        if (fs.existsSync(toPath)) {
+            const fallbackRecoveryRoot = getRecoveryRoot();
+            if (fallbackRecoveryRoot) {
+                movePathToRecovery({
+                    absolutePath: toPath,
+                    contentRoot,
+                    projectPath,
+                    projectId,
+                    recoveryRoot: fallbackRecoveryRoot,
+                    reason: 'rename-conflict-target-moved'
+                });
+            } else {
+                fs.rmSync(toPath, { recursive: true, force: true });
+            }
+        }
         fs.renameSync(fromPath, toPath);
     }
 
@@ -517,7 +566,12 @@ const syncPagesInContent = (contentRoot, rawPages = []) => {
             fs.mkdirSync(finalDir, { recursive: true });
         }
         upsertPageContentFile(finalDir, page.title);
-        removeDefaultTemplateArtifacts(finalDir);
+        removeDefaultTemplateArtifacts(finalDir, {
+            contentRoot,
+            recoveryRoot: getRecoveryRoot(),
+            projectPath,
+            projectId
+        });
     }
 
     return {
@@ -1233,6 +1287,81 @@ const resolveProjectMetaDir = (projectPath, { forWrite = false } = {}) => {
     return visibleDir;
 };
 
+const appendProjectRepairLog = ({ projectId = '', projectPath = '', action = '', details = {} } = {}) => {
+    const entry = {
+        timestamp: new Date().toISOString(),
+        projectId: String(projectId || '').trim() || null,
+        projectPath: String(projectPath || '').trim() || null,
+        action: String(action || '').trim() || 'unknown',
+        details: details && typeof details === 'object' ? details : {}
+    };
+
+    try {
+        fs.mkdirSync(FLATSITE_DIR, { recursive: true });
+        fs.appendFileSync(REPAIR_LOG_FILE, `${JSON.stringify(entry)}\n`, 'utf-8');
+    } catch {
+        // best effort log sink
+    }
+
+    const projectLabel = entry.projectId || path.basename(entry.projectPath || '') || 'unknown';
+    console.log(`[repair][${projectLabel}] ${entry.action}`, entry.details);
+};
+
+const ensureProjectRecoveryDir = (projectPath) => {
+    const metaDir = resolveProjectMetaDir(projectPath, { forWrite: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const recoveryDir = path.join(metaDir, PROJECT_RECOVERY_DIR_NAME, stamp);
+    fs.mkdirSync(recoveryDir, { recursive: true });
+    return recoveryDir;
+};
+
+const safeRelativePath = (baseRoot, targetPath) => {
+    const relative = path.relative(baseRoot, targetPath).replace(/\\/g, '/');
+    if (!relative || relative.startsWith('..')) {
+        return path.basename(targetPath);
+    }
+    return relative;
+};
+
+const uniqueTargetPath = (targetPath) => {
+    if (!fs.existsSync(targetPath)) return targetPath;
+    const ext = path.extname(targetPath);
+    const base = targetPath.slice(0, ext ? -ext.length : undefined);
+    let index = 1;
+    let candidate = `${base}-${index}${ext}`;
+    while (fs.existsSync(candidate)) {
+        index += 1;
+        candidate = `${base}-${index}${ext}`;
+    }
+    return candidate;
+};
+
+const movePathToRecovery = ({
+    absolutePath,
+    contentRoot,
+    projectPath = '',
+    projectId = '',
+    recoveryRoot = '',
+    reason = 'moved-to-recovery'
+} = {}) => {
+    if (!absolutePath || !fs.existsSync(absolutePath) || !recoveryRoot) return null;
+
+    const rel = safeRelativePath(contentRoot, absolutePath);
+    const targetRaw = path.join(recoveryRoot, rel);
+    const target = uniqueTargetPath(targetRaw);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.renameSync(absolutePath, target);
+
+    appendProjectRepairLog({
+        projectId,
+        projectPath,
+        action: reason,
+        details: { from: absolutePath, to: target }
+    });
+
+    return target;
+};
+
 const projectManifestPath = (projectPath, options = {}) =>
     path.join(resolveProjectMetaDir(projectPath, options), 'manifest.json');
 const projectStatePath = (projectPath, options = {}) =>
@@ -1509,12 +1638,102 @@ const resolveProjectPathFromRequest = ({ projectId = '', projectPath = '' } = {}
     throw new Error('Projekt konnte nicht gefunden werden');
 };
 
+const collectCanonicalPagesFromContent = (
+    contentRoot,
+    { projectPath = '', projectId = '' } = {}
+) => {
+    const dirs = listContentDirectories(contentRoot).filter((name) => {
+        if (!name || name.startsWith('.')) return false;
+        if (name === 'error' || name === PROJECT_RECOVERY_DIR_NAME) return false;
+        return true;
+    });
+
+    const candidates = [];
+    dirs.forEach((dirName, index) => {
+        const listedMatch = dirName.match(/^(\d+)_([\s\S]+)$/);
+        const isLegacyDir = /-legacy(?:-\d+)?$/i.test(dirName);
+        const hasDefaultTemplate = fs.existsSync(path.join(contentRoot, dirName, 'default.txt'));
+
+        if (!listedMatch && (!hasDefaultTemplate || isLegacyDir)) {
+            return;
+        }
+
+        const slugSource = listedMatch?.[2] || dirName;
+        const slug = sanitizeSlug(slugSource);
+        if (!slug) return;
+
+        const order = listedMatch ? parseInt(listedMatch[1], 10) || 999999 : 1000000 + index;
+        const fallbackTitle = humanizeSlug(slugSource);
+        const title = readPageTitleFromDirectory(contentRoot, dirName, fallbackTitle) || fallbackTitle;
+
+        candidates.push({ slug, title, order, dirName });
+    });
+
+    candidates.sort((a, b) => {
+        if (a.order !== b.order) return a.order - b.order;
+        return String(a.dirName).localeCompare(String(b.dirName), 'de', { sensitivity: 'base' });
+    });
+
+    const slugUsage = new Map();
+    const canonical = [];
+
+    for (const candidate of candidates) {
+        const currentCount = slugUsage.get(candidate.slug) || 0;
+        slugUsage.set(candidate.slug, currentCount + 1);
+        const canonicalSlug = currentCount === 0 ? candidate.slug : `${candidate.slug}-${currentCount + 1}`;
+
+        if (canonicalSlug !== candidate.slug) {
+            appendProjectRepairLog({
+                projectId,
+                projectPath,
+                action: 'duplicate-slug-normalized',
+                details: {
+                    originalSlug: candidate.slug,
+                    normalizedSlug: canonicalSlug,
+                    sourceDir: candidate.dirName
+                }
+            });
+        }
+
+        canonical.push({ slug: canonicalSlug, title: candidate.title });
+    }
+
+    return canonical;
+};
+
+const sanitizeProjectSnapshotOnOpen = (projectPath, projectId) => {
+    const snapshotContentDir = projectSnapshotContentPath(projectPath, { forWrite: true });
+    fs.mkdirSync(snapshotContentDir, { recursive: true });
+
+    const canonicalPages = collectCanonicalPagesFromContent(snapshotContentDir, {
+        projectPath,
+        projectId
+    });
+
+    if (canonicalPages.length > 0) {
+        const result = syncPagesInContent(snapshotContentDir, canonicalPages, {
+            projectPath,
+            projectId
+        });
+
+        appendProjectRepairLog({
+            projectId,
+            projectPath,
+            action: 'snapshot-canonicalized',
+            details: { total: result.total }
+        });
+    }
+
+    return canonicalPages;
+};
+
 const openProjectByPath = (projectPathInput) => {
     const projectPath = normalizeProjectPath(projectPathInput);
     const manifest = readJsonFileOrNull(projectManifestPath(projectPath));
     if (!manifest) throw new Error('In diesem Ordner wurde kein Flatsite-Projekt gefunden');
 
     let state = readJsonFileOrNull(projectStatePath(projectPath)) || {};
+    const snapshotPages = sanitizeProjectSnapshotOnOpen(projectPath, manifest.id);
     restoreStoredProjectToLive(projectPath);
 
     let canonicalPages = listPagesForFlatsiteUi(LIVE_CONTENT_DIR)
@@ -1525,6 +1744,10 @@ const openProjectByPath = (projectPathInput) => {
         .filter((page) => page.slug && page.title);
 
     // One-time compatibility migration for old projects that still persisted pages in state.json.
+    if (canonicalPages.length === 0 && snapshotPages.length > 0) {
+        canonicalPages = snapshotPages;
+    }
+
     if (canonicalPages.length === 0) {
         const legacyStatePages = Array.isArray(state.pages) ? state.pages : [];
         const normalizedLegacyPages = legacyStatePages
@@ -1536,14 +1759,20 @@ const openProjectByPath = (projectPathInput) => {
             .filter((page) => page.slug && page.title);
 
         if (normalizedLegacyPages.length > 0) {
-            syncPagesInContent(LIVE_CONTENT_DIR, normalizedLegacyPages);
+            syncPagesInContent(LIVE_CONTENT_DIR, normalizedLegacyPages, {
+                projectPath,
+                projectId: manifest.id
+            });
             canonicalPages = normalizedLegacyPages;
         }
     }
 
     // Keep Kirby content canonical on project open so editor and app show the same pages.
     if (canonicalPages.length > 0) {
-        syncPagesInContent(LIVE_CONTENT_DIR, canonicalPages);
+        syncPagesInContent(LIVE_CONTENT_DIR, canonicalPages, {
+            projectPath,
+            projectId: manifest.id
+        });
     }
 
     // Remove legacy duplicate page source from state.json (pages now live in Kirby content only).
@@ -2188,7 +2417,23 @@ app.post('/api/sync-pages', express.json(), (req, res) => {
     const contentRoot = path.join(__dirname, 'kirby-cms', 'content');
 
     try {
-        const result = syncPagesInContent(contentRoot, pages);
+        let activeProjectPath = '';
+        let activeProjectId = '';
+        try {
+            activeProjectPath = getActiveProjectPath();
+            if (activeProjectPath) {
+                const manifest = readJsonFileOrNull(projectManifestPath(activeProjectPath));
+                activeProjectId = String(manifest?.id || '').trim();
+            }
+        } catch {
+            activeProjectPath = '';
+            activeProjectId = '';
+        }
+
+        const result = syncPagesInContent(contentRoot, pages, {
+            projectPath: activeProjectPath,
+            projectId: activeProjectId
+        });
         res.json({ success: true, ...result });
     } catch (err) {
         console.error('Fehler beim Synchronisieren der Seiten:', err);

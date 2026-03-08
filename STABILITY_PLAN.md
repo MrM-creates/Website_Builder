@@ -35,14 +35,14 @@ Regel: Es wird immer nur die aktuelle Phase bearbeitet, keine Parallel-Themen.
 - [x] Keine Geisterseiten in 30 Wiederholungen.
 
 ## Phase 3: Kanonisierung & Migration (0.5–1 Tag)
-- [ ] `sanitize` beim Projekt-Open ausführen (nicht global destruktiv beim Serverstart).
-- [ ] Reparaturregeln für `default 2.txt`-Artefakte, Legacy-Ordner und Reihenfolge-Ordner finalisieren.
-- [ ] Bei Konflikten immer Backup (`_recovery`) statt Löschen.
+- [x] `sanitize` beim Projekt-Open ausführen (nicht global destruktiv beim Serverstart).
+- [x] Reparaturregeln für `default 2.txt`-Artefakte, Legacy-Ordner und Reihenfolge-Ordner finalisieren.
+- [x] Bei Konflikten immer Backup (`_recovery`) statt Löschen.
 
 ### Definition of Done
-- [ ] Bekannte Altprojekte öffnen ohne Seitenverlust.
-- [ ] Keine falschen Templates mehr (`default 2` etc.).
-- [ ] Jede Reparatur wird mit Projekt-ID geloggt.
+- [x] Bekannte Altprojekte öffnen ohne Seitenverlust. (N/A: aktuell keine Altprojekte im Bestand)
+- [x] Keine falschen Templates mehr (`default 2` etc.).
+- [x] Jede Reparatur wird mit Projekt-ID geloggt.
 
 ## Phase 4: Server-Manager vereinheitlichen (1 Tag)
 - [ ] Ein Startmodell als Standard festlegen (kein Mischbetrieb).
