@@ -748,6 +748,215 @@ const removeFtpPathIfExists = async (client, remotePath = '/') => {
     await client.remove(normalized);
 };
 
+const MANAGED_MEDIA_SUBPATHS = ['media/pages'];
+const DEPLOY_MANIFEST_FILENAME = '.flider-deploy-manifest.json';
+
+const buildRemoteChildPath = (remoteRoot = '/', childPath = '') => {
+    const normalizedRoot = normalizeTargetPath(remoteRoot);
+    const normalizedChild = String(childPath || '')
+        .replace(/^\/+/, '')
+        .replace(/\\/g, '/')
+        .replace(/\/+/g, '/');
+
+    if (!normalizedChild) {
+        return normalizedRoot;
+    }
+
+    if (normalizedRoot === '/') {
+        return normalizeTargetPath(`/${normalizedChild}`);
+    }
+
+    return normalizeTargetPath(`${normalizedRoot}/${normalizedChild}`);
+};
+
+const cleanupManagedMediaFtp = async (client, remoteRoot = '/') => {
+    for (const subPath of MANAGED_MEDIA_SUBPATHS) {
+        const target = buildRemoteChildPath(remoteRoot, subPath);
+        await removeFtpPathIfExists(client, target);
+    }
+};
+
+const removeSftpPathIfExists = async (sftp, remotePath = '/') => {
+    const normalized = normalizeTargetPath(remotePath);
+    if (normalized === '/') return;
+
+    let entryType = false;
+    try {
+        entryType = await sftp.exists(normalized);
+    } catch {
+        return;
+    }
+
+    if (!entryType) return;
+
+    if (entryType === 'd') {
+        await sftp.rmdir(normalized, true);
+        return;
+    }
+
+    try {
+        await sftp.delete(normalized);
+    } catch {
+        await sftp.rmdir(normalized, true);
+    }
+};
+
+const cleanupManagedMediaSftp = async (sftp, remoteRoot = '/') => {
+    for (const subPath of MANAGED_MEDIA_SUBPATHS) {
+        const target = buildRemoteChildPath(remoteRoot, subPath);
+        await removeSftpPathIfExists(sftp, target);
+    }
+};
+
+const listFilesRecursive = (rootDir, currentDir = rootDir, files = []) => {
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+        const absolute = path.join(currentDir, entry.name);
+        if (entry.isDirectory()) {
+            listFilesRecursive(rootDir, absolute, files);
+            continue;
+        }
+        if (!entry.isFile()) continue;
+        const relative = path.relative(rootDir, absolute).replace(/\\/g, '/');
+        files.push(relative);
+    }
+    return files;
+};
+
+const buildDeployManifestPayload = ({
+    projectId = '',
+    projectPath = '',
+    targetPath = '/',
+    websiteUrl = '',
+    filePaths = []
+} = {}) => ({
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    projectId: normalizeProjectId(projectId),
+    projectPath: String(projectPath || '').trim() || null,
+    targetPath: normalizeTargetPath(targetPath),
+    websiteUrl: normalizeWebsiteUrl(websiteUrl),
+    files: [...new Set((Array.isArray(filePaths) ? filePaths : []).map((item) => String(item || '').replace(/\\/g, '/').replace(/^\/+/, '')))]
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, 'en'))
+});
+
+const writeDeployManifestToSource = ({ sourceFolder, payload }) => {
+    const manifestPath = path.join(sourceFolder, DEPLOY_MANIFEST_FILENAME);
+    fs.writeFileSync(manifestPath, JSON.stringify(payload, null, 2), 'utf-8');
+    return manifestPath;
+};
+
+const parseDeployManifestPayload = (raw = '') => {
+    if (!raw) return null;
+    try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed?.files)) return null;
+        return {
+            ...parsed,
+            files: [...new Set(parsed.files.map((item) => String(item || '').replace(/\\/g, '/').replace(/^\/+/, '')).filter(Boolean))]
+        };
+    } catch {
+        return null;
+    }
+};
+
+const readRemoteDeployManifestFtp = async (client, remoteRoot = '/') => {
+    const remotePath = buildRemoteChildPath(remoteRoot, DEPLOY_MANIFEST_FILENAME);
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'flider-remote-manifest-'));
+    const localFile = path.join(tempDir, DEPLOY_MANIFEST_FILENAME);
+    try {
+        await client.downloadTo(localFile, remotePath);
+        const raw = fs.readFileSync(localFile, 'utf-8');
+        return parseDeployManifestPayload(raw);
+    } catch {
+        return null;
+    } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+};
+
+const readRemoteDeployManifestSftp = async (sftp, remoteRoot = '/') => {
+    const remotePath = buildRemoteChildPath(remoteRoot, DEPLOY_MANIFEST_FILENAME);
+    try {
+        const buffer = await sftp.get(remotePath);
+        if (!buffer) return null;
+        const raw = Buffer.isBuffer(buffer) ? buffer.toString('utf-8') : String(buffer);
+        return parseDeployManifestPayload(raw);
+    } catch {
+        return null;
+    }
+};
+
+const computeStaleManifestEntries = (previousManifest, nextManifest) => {
+    const prevFiles = new Set(Array.isArray(previousManifest?.files) ? previousManifest.files : []);
+    const nextFiles = new Set(Array.isArray(nextManifest?.files) ? nextManifest.files : []);
+
+    const staleFiles = [...prevFiles]
+        .filter((filePath) => !nextFiles.has(filePath))
+        .sort((a, b) => b.length - a.length);
+
+    const dirs = new Set();
+    for (const filePath of staleFiles) {
+        const normalized = String(filePath || '').replace(/\\/g, '/');
+        if (!normalized) continue;
+        let current = path.posix.dirname(normalized);
+        while (current && current !== '.' && current !== '/') {
+            dirs.add(current);
+            current = path.posix.dirname(current);
+        }
+    }
+
+    const staleDirs = [...dirs].sort((a, b) => b.length - a.length);
+    return { staleFiles, staleDirs };
+};
+
+const removeRemoteStaleFromManifestFtp = async (client, remoteRoot, previousManifest, nextManifest) => {
+    const { staleFiles, staleDirs } = computeStaleManifestEntries(previousManifest, nextManifest);
+
+    for (const relativeFile of staleFiles) {
+        const remotePath = buildRemoteChildPath(remoteRoot, relativeFile);
+        await removeFtpPathIfExists(client, remotePath);
+    }
+
+    for (const relativeDir of staleDirs) {
+        const remoteDir = buildRemoteChildPath(remoteRoot, relativeDir);
+        try {
+            const entries = await client.list(remoteDir);
+            if (entries.length === 0) {
+                await client.removeDir(remoteDir);
+            }
+        } catch {
+            // ignore non-empty/missing dirs
+        }
+    }
+
+    return { staleFiles: staleFiles.length, staleDirs: staleDirs.length };
+};
+
+const removeRemoteStaleFromManifestSftp = async (sftp, remoteRoot, previousManifest, nextManifest) => {
+    const { staleFiles, staleDirs } = computeStaleManifestEntries(previousManifest, nextManifest);
+
+    for (const relativeFile of staleFiles) {
+        const remotePath = buildRemoteChildPath(remoteRoot, relativeFile);
+        await removeSftpPathIfExists(sftp, remotePath);
+    }
+
+    for (const relativeDir of staleDirs) {
+        const remoteDir = buildRemoteChildPath(remoteRoot, relativeDir);
+        try {
+            const entries = await sftp.list(remoteDir);
+            if (entries.length === 0) {
+                await sftp.rmdir(remoteDir, false);
+            }
+        } catch {
+            // ignore non-empty/missing dirs
+        }
+    }
+
+    return { staleFiles: staleFiles.length, staleDirs: staleDirs.length };
+};
+
 const promoteFtpStagingDirectory = async (
     client,
     { targetPath = '/', stagingPath = '/', deployId = '' } = {}
@@ -1127,6 +1336,235 @@ const rewriteHtmlForStaticDeploy = (html, { websiteUrl, targetPath }) => {
     return output;
 };
 
+const trimWrappedQuotes = (value = '') => {
+    const raw = String(value ?? '').trim();
+    return raw.replace(/^['"]+|['"]+$/g, '').trim();
+};
+
+const isSkippableAssetReference = (value = '') => {
+    const raw = String(value ?? '').trim().toLowerCase();
+    return (
+        !raw ||
+        raw.startsWith('#') ||
+        raw.startsWith('//') ||
+        raw.startsWith('data:') ||
+        raw.startsWith('blob:') ||
+        raw.startsWith('javascript:') ||
+        raw.startsWith('mailto:') ||
+        raw.startsWith('tel:')
+    );
+};
+
+const normalizeLocalAssetPath = (reference = '') => {
+    let current = trimWrappedQuotes(reference);
+    if (!current || isSkippableAssetReference(current)) return '';
+
+    if (/^[a-z][a-z0-9+.-]*:/i.test(current)) {
+        try {
+            const parsed = new URL(current);
+            const origin = parsed.origin.toLowerCase();
+            const isLocalOrigin = LOCAL_ORIGIN_CANDIDATES.some((candidate) => candidate.toLowerCase() === origin);
+            if (!isLocalOrigin) return '';
+            current = parsed.pathname || '';
+        } catch {
+            return '';
+        }
+    }
+
+    current = current.split('?')[0].split('#')[0];
+    if (!current) return '';
+
+    if (!current.startsWith('/')) {
+        current = `/${current}`;
+    }
+
+    try {
+        current = decodeURIComponent(current);
+    } catch {
+        // keep raw encoded path
+    }
+
+    current = current.replace(/\\/g, '/').replace(/\/+/g, '/');
+
+    if (!/^\/(?:media|assets)\//i.test(current)) return '';
+    return current;
+};
+
+const addAssetReference = (assetMap, assetPath, pagePath) => {
+    if (!assetPath) return;
+    const key = assetPath;
+    if (!assetMap.has(key)) {
+        assetMap.set(key, new Set());
+    }
+    if (pagePath) {
+        assetMap.get(key).add(pagePath);
+    }
+};
+
+const extractAssetPathsFromHtml = (html = '', pagePath = '/') => {
+    const result = new Map();
+    const rawHtml = String(html ?? '');
+
+    const directAttrPattern = /\b(?:src|href|content|poster|data-src)\s*=\s*["']([^"']+)["']/gi;
+    let attrMatch;
+    while ((attrMatch = directAttrPattern.exec(rawHtml)) !== null) {
+        const assetPath = normalizeLocalAssetPath(attrMatch[1]);
+        addAssetReference(result, assetPath, pagePath);
+    }
+
+    const srcsetPattern = /\bsrcset\s*=\s*["']([^"']+)["']/gi;
+    let srcsetMatch;
+    while ((srcsetMatch = srcsetPattern.exec(rawHtml)) !== null) {
+        const entries = String(srcsetMatch[1] || '')
+            .split(',')
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+
+        for (const entry of entries) {
+            const [candidate] = entry.split(/\s+/);
+            const assetPath = normalizeLocalAssetPath(candidate);
+            addAssetReference(result, assetPath, pagePath);
+        }
+    }
+
+    const cssUrlPattern = /url\(([^)]+)\)/gi;
+    let cssUrlMatch;
+    while ((cssUrlMatch = cssUrlPattern.exec(rawHtml)) !== null) {
+        const assetPath = normalizeLocalAssetPath(cssUrlMatch[1]);
+        addAssetReference(result, assetPath, pagePath);
+    }
+
+    return result;
+};
+
+const mergeAssetMaps = (targetMap, sourceMap) => {
+    for (const [assetPath, pages] of sourceMap.entries()) {
+        if (!targetMap.has(assetPath)) {
+            targetMap.set(assetPath, new Set());
+        }
+        const setRef = targetMap.get(assetPath);
+        for (const pagePath of pages) {
+            setRef.add(pagePath);
+        }
+    }
+};
+
+const resolveCssUrlAssetPath = (cssAssetPath, cssReference) => {
+    const raw = trimWrappedQuotes(cssReference);
+    if (!raw || isSkippableAssetReference(raw)) return '';
+
+    if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) {
+        return normalizeLocalAssetPath(raw);
+    }
+
+    const normalizedCssPath = String(cssAssetPath || '').replace(/\\/g, '/');
+    const cssDir = path.posix.dirname(normalizedCssPath);
+    const combined = raw.startsWith('/')
+        ? raw
+        : path.posix.join(cssDir, raw);
+
+    return normalizeLocalAssetPath(combined);
+};
+
+const expandCssAssetDependencies = (assetMap, kirbyRoot) => {
+    const queue = [...assetMap.keys()].filter((assetPath) => /\.css$/i.test(assetPath));
+    const visited = new Set();
+
+    while (queue.length > 0) {
+        const cssAssetPath = queue.shift();
+        if (!cssAssetPath || visited.has(cssAssetPath)) continue;
+        visited.add(cssAssetPath);
+
+        const cssFilePath = path.join(kirbyRoot, cssAssetPath.replace(/^\/+/, ''));
+        if (!fs.existsSync(cssFilePath)) continue;
+
+        let cssContent = '';
+        try {
+            cssContent = fs.readFileSync(cssFilePath, 'utf-8');
+        } catch {
+            continue;
+        }
+
+        const cssUrlPattern = /url\(([^)]+)\)/gi;
+        let cssUrlMatch;
+        while ((cssUrlMatch = cssUrlPattern.exec(cssContent)) !== null) {
+            const dependencyPath = resolveCssUrlAssetPath(cssAssetPath, cssUrlMatch[1]);
+            if (!dependencyPath) continue;
+
+            addAssetReference(assetMap, dependencyPath, null);
+            if (/\.css$/i.test(dependencyPath) && !visited.has(dependencyPath)) {
+                queue.push(dependencyPath);
+            }
+        }
+    }
+};
+
+const warmReferencedAssets = async (assetPaths = []) => {
+    const warmed = [];
+    const failed = [];
+
+    for (const assetPath of assetPaths) {
+        const url = `${KIRBY_LOCAL_ORIGIN}${assetPath}`;
+        try {
+            const response = await fetchWithTimeout(url, 25000);
+            if (response.ok) {
+                warmed.push(assetPath);
+            } else {
+                failed.push({
+                    assetPath,
+                    status: response.status,
+                    error: `HTTP ${response.status}`
+                });
+            }
+        } catch (error) {
+            failed.push({
+                assetPath,
+                status: 0,
+                error: error?.message || 'request failed'
+            });
+        }
+    }
+
+    return { warmed, failed };
+};
+
+const findMissingAssetFiles = (assetPaths, kirbyRoot) => {
+    const missing = [];
+    for (const assetPath of assetPaths) {
+        const sourcePath = path.join(kirbyRoot, assetPath.replace(/^\/+/, ''));
+        if (!fs.existsSync(sourcePath)) {
+            missing.push(assetPath);
+        }
+    }
+    return missing;
+};
+
+const copyReferencedAssetsToExport = ({ assetPaths, kirbyRoot, exportRoot }) => {
+    let copied = 0;
+    const missing = [];
+
+    for (const assetPath of assetPaths) {
+        const sourcePath = path.join(kirbyRoot, assetPath.replace(/^\/+/, ''));
+        const targetPath = path.join(exportRoot, assetPath.replace(/^\/+/, ''));
+
+        if (!fs.existsSync(sourcePath)) {
+            missing.push(assetPath);
+            continue;
+        }
+
+        const stats = fs.statSync(sourcePath);
+        if (!stats.isFile()) {
+            continue;
+        }
+
+        fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+        fs.copyFileSync(sourcePath, targetPath);
+        copied += 1;
+    }
+
+    return { copied, missing };
+};
+
 const copyDirectoryIfExists = (sourceDir, targetDir) => {
     if (!fs.existsSync(sourceDir)) return;
     fs.mkdirSync(path.dirname(targetDir), { recursive: true });
@@ -1214,23 +1652,63 @@ const buildStaticDeploySource = async ({ kirbyRoot, websiteUrl, targetPath }) =>
     const exportRoot = path.join(tempRoot, 'site-export');
     fs.mkdirSync(exportRoot, { recursive: true });
 
+    // Reset Kirby media cache for deploy to avoid carrying stale hash folders
+    // between publishes. Content files remain untouched.
+    removePathIfExists(path.join(kirbyRoot, 'media', 'pages'));
+
     const contentRoot = path.join(kirbyRoot, 'content');
     const pagePaths = listPublicPagePaths(contentRoot);
 
+    const referencedAssets = new Map();
+
     for (const pagePath of pagePaths) {
         const rawHtml = await fetchKirbyPageHtml(pagePath);
+        mergeAssetMaps(referencedAssets, extractAssetPathsFromHtml(rawHtml, pagePath));
         const rewrittenHtml = rewriteHtmlForStaticDeploy(rawHtml, { websiteUrl, targetPath });
         writeStaticPage(exportRoot, pagePath, rewrittenHtml);
     }
 
-    copyDirectoryIfExists(path.join(kirbyRoot, 'assets'), path.join(exportRoot, 'assets'));
-    copyDirectoryIfExists(path.join(kirbyRoot, 'media'), path.join(exportRoot, 'media'));
-    removePathIfExists(path.join(exportRoot, 'media', 'panel'));
+    expandCssAssetDependencies(referencedAssets, kirbyRoot);
+
+    const requiredAssetPaths = [...referencedAssets.keys()].sort();
+    const warmResult = await warmReferencedAssets(requiredAssetPaths);
+    const missingLocalAssets = findMissingAssetFiles(requiredAssetPaths, kirbyRoot);
+
+    if (missingLocalAssets.length > 0) {
+        const preview = missingLocalAssets.slice(0, 6).map((assetPath) => {
+            const pages = [...(referencedAssets.get(assetPath) || [])].slice(0, 3).join(', ') || '?';
+            return `${assetPath} (referenziert in: ${pages})`;
+        });
+        throw new Error(
+            `Deploy abgebrochen: ${missingLocalAssets.length} referenzierte Assets fehlen lokal. ` +
+            `Beispiele: ${preview.join(' | ')}`
+        );
+    }
+
+    const copiedAssets = copyReferencedAssetsToExport({
+        assetPaths: requiredAssetPaths,
+        kirbyRoot,
+        exportRoot
+    });
+
+    if (copiedAssets.missing.length > 0) {
+        const preview = copiedAssets.missing.slice(0, 6).join(' | ');
+        throw new Error(
+            `Deploy abgebrochen: ${copiedAssets.missing.length} Assets konnten nicht exportiert werden. Beispiele: ${preview}`
+        );
+    }
+
     writeUtf8Htaccess(exportRoot);
 
     return {
         sourceFolder: exportRoot,
         pageCount: pagePaths.length,
+        assetReport: {
+            referenced: requiredAssetPaths.length,
+            warmed: warmResult.warmed.length,
+            warmFailed: warmResult.failed.length,
+            copied: copiedAssets.copied
+        },
         cleanup: () => {
             fs.rmSync(tempRoot, { recursive: true, force: true });
         }
@@ -2543,6 +3021,16 @@ app.post('/api/deploy', async (req, res) => {
     let normalizedWebsiteUrl = '';
     let sourceFolder = '';
     let cleanupStaticExport = () => {};
+    let activeProjectPath = '';
+    let activeProjectId = '';
+    let activeProjectName = '';
+    let deployManifest = null;
+    let assetReport = {
+        referenced: 0,
+        warmed: 0,
+        warmFailed: 0,
+        copied: 0
+    };
 
     if (deployInProgress) {
         return res.status(409).json({
@@ -2561,12 +3049,35 @@ app.post('/api/deploy', async (req, res) => {
     }
 
     try {
+        try {
+            const activeRef = getActiveProjectRef();
+            activeProjectPath = resolveProjectPathFromRequest({
+                projectId: activeRef.projectId,
+                projectPath: activeRef.projectPath
+            });
+            const activeProject = await withProjectLock(
+                activeProjectPath,
+                () => openProjectByPath(activeProjectPath)
+            );
+            activeProjectId = normalizeProjectId(activeProject?.id);
+            activeProjectName = String(activeProject?.name || '').trim();
+        } catch (projectError) {
+            throw new Error(
+                `Kein aktives Projekt für Deploy verfügbar (${projectError?.message || 'Projekt konnte nicht geladen werden'})`
+            );
+        }
+
         updateSiteMetaInContent(path.join(kirbyRoot, 'content'), {
             title: siteTitle,
             footerLine1,
             footerLine2,
             footerLine3
         });
+        if (activeProjectPath) {
+            await withProjectLock(activeProjectPath, () => {
+                snapshotLiveProjectToStore(activeProjectPath);
+            });
+        }
 
         const staticExport = await buildStaticDeploySource({
             kirbyRoot,
@@ -2574,15 +3085,46 @@ app.post('/api/deploy', async (req, res) => {
             targetPath: normalizedTargetPath
         });
         sourceFolder = staticExport.sourceFolder;
+        assetReport = staticExport.assetReport || assetReport;
         cleanupStaticExport = staticExport.cleanup;
+
+        // Build a deterministic deploy manifest for remote stale cleanup.
+        writeDeployManifestToSource({
+            sourceFolder,
+            payload: buildDeployManifestPayload({
+                projectId: activeProjectId,
+                projectPath: activeProjectPath,
+                targetPath: normalizedTargetPath,
+                websiteUrl: normalizedWebsiteUrl,
+                filePaths: []
+            })
+        });
+        const exportFiles = listFilesRecursive(sourceFolder);
+        deployManifest = buildDeployManifestPayload({
+            projectId: activeProjectId,
+            projectPath: activeProjectPath,
+            targetPath: normalizedTargetPath,
+            websiteUrl: normalizedWebsiteUrl,
+            filePaths: exportFiles
+        });
+        writeDeployManifestToSource({
+            sourceFolder,
+            payload: deployManifest
+        });
+
         ensureLocalExportHasStartFile(sourceFolder);
 
-        console.log(`Static Export erstellt (${staticExport.pageCount} Seiten): ${sourceFolder}`);
+        console.log(
+            `Static Export erstellt (${staticExport.pageCount} Seiten, ` +
+            `${assetReport.referenced} Assets referenziert, ${assetReport.copied} kopiert, ` +
+            `${assetReport.warmFailed} Warmup-Fehler): ${sourceFolder}`
+        );
         console.log(`Starte Deployment zu ${host} auf Port ${parsedPort} (Zielpfad: ${normalizedTargetPath})...`);
 
         if (parsedPort === 22) {
             // SFTP (SSH Protocol) via ssh2-sftp-client
             const sftp = new SftpClient();
+            let staleCleanup = { staleFiles: 0, staleDirs: 0 };
             try {
                 await sftp.connect({
                     host: host,
@@ -2592,6 +3134,22 @@ app.post('/api/deploy', async (req, res) => {
                     readyTimeout: 10000 // 10 seconds timeout
                 });
                 console.log("SFTP Verbindung hergestellt! Lade Dateien hoch...");
+
+                let previousRemoteManifest = null;
+                if (normalizedTargetPath === '/') {
+                    previousRemoteManifest = await readRemoteDeployManifestSftp(sftp, normalizedTargetPath);
+                }
+                if (normalizedTargetPath === '/') {
+                    await cleanupManagedMediaSftp(sftp, normalizedTargetPath);
+                    if (previousRemoteManifest && deployManifest) {
+                        staleCleanup = await removeRemoteStaleFromManifestSftp(
+                            sftp,
+                            normalizedTargetPath,
+                            previousRemoteManifest,
+                            deployManifest
+                        );
+                    }
+                }
 
                 await sftp.mkdir(normalizedTargetPath, true);
                 // Upload the entire directory
@@ -2606,6 +3164,12 @@ app.post('/api/deploy', async (req, res) => {
                 mode: 'direct',
                 targetPath: normalizedTargetPath,
                 verifiedStartFile: true,
+                assetReport,
+                staleCleanup,
+                project: {
+                    id: activeProjectId || null,
+                    name: activeProjectName || null
+                },
                 log: `Erfolgreich nach ${host} (via SFTP) hochgeladen. Zielpfad: ${normalizedTargetPath}`
             });
 
@@ -2633,6 +3197,23 @@ app.post('/api/deploy', async (req, res) => {
                 const archiveName = 'flatsite-deploy.zip';
 
                 console.log(`FTPES Verbindung hergestellt. Modus: ${wantsZip ? 'ZIP' : 'DIRECT'}`);
+
+                let staleCleanup = { staleFiles: 0, staleDirs: 0 };
+                let previousRemoteManifest = null;
+                if (normalizedTargetPath === '/') {
+                    previousRemoteManifest = await readRemoteDeployManifestFtp(client, normalizedTargetPath);
+                }
+                if (normalizedTargetPath === '/') {
+                    await cleanupManagedMediaFtp(client, normalizedTargetPath);
+                    if (previousRemoteManifest && deployManifest) {
+                        staleCleanup = await removeRemoteStaleFromManifestFtp(
+                            client,
+                            normalizedTargetPath,
+                            previousRemoteManifest,
+                            deployManifest
+                        );
+                    }
+                }
 
                 if (supportsStagingSwap) {
                     await removeFtpPathIfExists(client, stagingPath);
@@ -2682,6 +3263,12 @@ app.post('/api/deploy', async (req, res) => {
                                 targetPath: normalizedTargetPath,
                                 triggerUrl: triggerResult.url,
                                 verifiedStartFile,
+                                assetReport,
+                                staleCleanup,
+                                project: {
+                                    id: activeProjectId || null,
+                                    name: activeProjectName || null
+                                },
                                 log: `Erfolgreich nach ${host} (via FTPES, ZIP) deployed. ZIP wurde serverseitig entpackt. Zielpfad: ${normalizedTargetPath}. Trigger: ${triggerResult.url}`
                             });
                             return;
@@ -2713,6 +3300,12 @@ app.post('/api/deploy', async (req, res) => {
                             mode: 'direct-fallback',
                             targetPath: normalizedTargetPath,
                             verifiedStartFile,
+                            assetReport,
+                            staleCleanup,
+                            project: {
+                                id: activeProjectId || null,
+                                name: activeProjectName || null
+                            },
                             warning: 'ZIP Upload war erfolgreich, automatisches Entpacken aber nicht erreichbar. Fallback Direkt-Upload wurde ausgeführt.',
                             attempts: triggerResult.attempts,
                             log: `Erfolgreich nach ${host} (via FTPES) hochgeladen. ZIP-Trigger nicht erreichbar, daher Fallback Direkt-Upload. Zielpfad: ${normalizedTargetPath}`
@@ -2742,6 +3335,12 @@ app.post('/api/deploy', async (req, res) => {
                     mode: 'direct',
                     targetPath: normalizedTargetPath,
                     verifiedStartFile,
+                    assetReport,
+                    staleCleanup,
+                    project: {
+                        id: activeProjectId || null,
+                        name: activeProjectName || null
+                    },
                     log: `Erfolgreich nach ${host} (via FTPES) hochgeladen. Zielpfad: ${normalizedTargetPath}`
                 });
             } finally {
