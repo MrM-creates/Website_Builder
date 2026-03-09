@@ -386,6 +386,7 @@ function App() {
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [setupDone, setSetupDone] = useState(false);
   const [panelSrc, setPanelSrc] = useState('/panel/site');
+  const [showFooterPanelInEditor, setShowFooterPanelInEditor] = useState(true);
   const [currentProjectId, setCurrentProjectId] = useState('');
   const [currentProjectPath, setCurrentProjectPath] = useState('');
   const [projects, setProjects] = useState([]);
@@ -404,6 +405,7 @@ function App() {
 
   // Refs
   const editInputRef = useRef(null);
+  const panelFrameRef = useRef(null);
   const lastOnboardingSyncSignatureRef = useRef('');
   const isApplyingProjectStateRef = useRef(false);
   const lastPersistedContentSignatureRef = useRef('');
@@ -430,6 +432,21 @@ function App() {
     lastPublishedViewUrl,
     lastPublishedSignature,
   });
+
+  const isPanelSiteOverviewPath = (pathname = '') => {
+    const normalized = String(pathname || '').replace(/\/+$/g, '');
+    return normalized === '/panel/site';
+  };
+
+  const refreshEditorFooterVisibility = () => {
+    try {
+      const pathname = panelFrameRef.current?.contentWindow?.location?.pathname || '';
+      const shouldShow = isPanelSiteOverviewPath(pathname);
+      setShowFooterPanelInEditor((prev) => (prev === shouldShow ? prev : shouldShow));
+    } catch {
+      // Ignore iframe access edge cases and keep previous visibility state.
+    }
+  };
 
   const applyProjectState = (state = {}) => {
     isApplyingProjectStateRef.current = true;
@@ -461,6 +478,7 @@ function App() {
     setShowExportModal(false);
     setKirbyReady(false);
     setPanelSrc('/panel/site');
+    setShowFooterPanelInEditor(true);
     lastOnboardingSyncSignatureRef.current = '';
 
     setTimeout(() => {
@@ -877,6 +895,7 @@ function App() {
   useEffect(() => {
     if (step === 'editor') {
       setPanelSrc(`/panel/site?ts=${Date.now()}`);
+      setShowFooterPanelInEditor(true);
     }
   }, [step]);
 
@@ -971,6 +990,15 @@ function App() {
       clearInterval(intervalId);
     };
   }, [step]);
+
+  useEffect(() => {
+    if (step !== 'editor') return;
+
+    refreshEditorFooterVisibility();
+    const intervalId = setInterval(refreshEditorFooterVisibility, 600);
+
+    return () => clearInterval(intervalId);
+  }, [step, panelSrc, kirbyReady]);
 
   useEffect(() => {
     if (!currentProjectId || step !== 'editor' || isApplyingProjectStateRef.current || isResettingProjectRef.current) {
@@ -2457,9 +2485,11 @@ function App() {
               }}>
                 {kirbyReady ? (
                   <iframe
+                    ref={panelFrameRef}
                     src={panelSrc}
                     style={{ width: '100%', flex: 1, border: 'none', minHeight: '600px', background: '#fff' }}
                     title="Kirby CMS Editor"
+                    onLoad={refreshEditorFooterVisibility}
                   />
                 ) : (
                   <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem' }}>
@@ -2471,56 +2501,58 @@ function App() {
               </div>
 
               {/* Footer block in editor context */}
-              <aside style={{
-                width: '320px',
-                background: 'var(--surface-color)',
-                padding: '1rem',
-                overflowY: 'auto',
-                border: '1px solid var(--border-color)',
-                borderRadius: '12px',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.2)'
-              }}>
-                <h3 style={{ margin: '0 0 0.35rem 0', fontSize: '1rem' }}>Footer</h3>
-                <p style={{ margin: '0 0 1rem 0', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
-                  Diese Angaben werden auf deiner Website unten angezeigt.
-                </p>
-                <div className="input-group" style={{ marginBottom: '0.85rem' }}>
-                  <label style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                    Copyright Name (© + Jahr automatisch)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="z.B. Dein Name"
-                    value={footerLine1}
-                    onChange={e => setFooterLine1(e.target.value)}
-                    style={{ padding: '0.45rem 0.6rem', fontSize: '0.82rem' }}
-                  />
-                </div>
-                <div className="input-group" style={{ marginBottom: '0.85rem' }}>
-                  <label style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                    Instagram-Link
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="z.B. instagram.com/deinprofil"
-                    value={footerLine2}
-                    onChange={e => setFooterLine2(e.target.value)}
-                    style={{ padding: '0.45rem 0.6rem', fontSize: '0.82rem' }}
-                  />
-                </div>
-                <div className="input-group">
-                  <label style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
-                    Kontakt E-Mail (optional)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="z.B. mail@example.com"
-                    value={footerLine3}
-                    onChange={e => setFooterLine3(e.target.value)}
-                    style={{ padding: '0.45rem 0.6rem', fontSize: '0.82rem' }}
-                  />
-                </div>
-              </aside>
+              {showFooterPanelInEditor && (
+                <aside style={{
+                  width: '320px',
+                  background: 'var(--surface-color)',
+                  padding: '1rem',
+                  overflowY: 'auto',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '12px',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.2)'
+                }}>
+                  <h3 style={{ margin: '0 0 0.35rem 0', fontSize: '1rem' }}>Footer</h3>
+                  <p style={{ margin: '0 0 1rem 0', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                    Diese Angaben werden auf deiner Website unten angezeigt.
+                  </p>
+                  <div className="input-group" style={{ marginBottom: '0.85rem' }}>
+                    <label style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
+                      Copyright Name (© + Jahr automatisch)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="z.B. Dein Name"
+                      value={footerLine1}
+                      onChange={e => setFooterLine1(e.target.value)}
+                      style={{ padding: '0.45rem 0.6rem', fontSize: '0.82rem' }}
+                    />
+                  </div>
+                  <div className="input-group" style={{ marginBottom: '0.85rem' }}>
+                    <label style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
+                      Instagram-Link
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="z.B. instagram.com/deinprofil"
+                      value={footerLine2}
+                      onChange={e => setFooterLine2(e.target.value)}
+                      style={{ padding: '0.45rem 0.6rem', fontSize: '0.82rem' }}
+                    />
+                  </div>
+                  <div className="input-group">
+                    <label style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', display: 'block', marginBottom: '0.3rem' }}>
+                      Kontakt E-Mail (optional)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="z.B. mail@example.com"
+                      value={footerLine3}
+                      onChange={e => setFooterLine3(e.target.value)}
+                      style={{ padding: '0.45rem 0.6rem', fontSize: '0.82rem' }}
+                    />
+                  </div>
+                </aside>
+              )}
             </div>
           </div>
         )}
