@@ -133,6 +133,14 @@ h6 {
     text-transform: uppercase;
 }
 
+.site-logo-image {
+    display: block;
+    height: 42px;
+    width: auto;
+    max-width: 220px;
+    object-fit: contain;
+}
+
 .nav-links {
     list-style: none;
     display: flex;

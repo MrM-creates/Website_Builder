@@ -342,10 +342,14 @@ function App() {
   const BACKEND_URL = 'http://127.0.0.1:3001';
   const BRAND_NAME = 'Flider.';
   const BRAND_WORDMARK_DARK = '/brand/flider_wordmark_dark.svg?v=3';
+  const SITE_LOGO_MAX_MB = 12;
 
   /* ---- State ---- */
   const [step, setStep] = useState('welcome');
   const [projectName, setProjectName] = useState('');
+  const [siteLogoUrl, setSiteLogoUrl] = useState('');
+  const [isUploadingSiteLogo, setIsUploadingSiteLogo] = useState(false);
+  const [siteLogoError, setSiteLogoError] = useState('');
 
   // Pages
   const [pages, setPages] = useState(DEFAULT_PAGES.map(p => ({ ...p })));
@@ -414,6 +418,7 @@ function App() {
 
   const collectProjectState = () => ({
     projectName: projectName.trim(),
+    siteLogoUrl,
     selectedDesign,
     selectedVibeId,
     hostingProvider,
@@ -452,6 +457,8 @@ function App() {
     isApplyingProjectStateRef.current = true;
 
     setProjectName(String(state.projectName || ''));
+    setSiteLogoUrl(String(state.siteLogoUrl || ''));
+    setSiteLogoError('');
     const resolvedDesign = String(state.selectedDesign || 'minimalist');
     const fallbackVibe = getVibeByLegacyIndex(resolvedDesign, state.selectedColor);
     const resolvedVibeId = String(state.selectedVibeId || fallbackVibe?.id || getDefaultVibeForStyle(resolvedDesign)?.id || '');
@@ -748,6 +755,15 @@ function App() {
       setCurrentProjectId(data.project.id);
       setCurrentProjectPath(String(data.project.path || ''));
       const loadedState = { ...(data.project.state || {}) };
+      try {
+        const metaRes = await fetch(`${BACKEND_URL}/api/site-meta`);
+        const metaData = await metaRes.json().catch(() => ({}));
+        if (metaRes.ok && metaData?.success) {
+          loadedState.siteLogoUrl = String(metaData?.siteMeta?.logo || '');
+        }
+      } catch {
+        // ignore site meta fallback errors
+      }
       let contentPages = await fetchPagesFromKirbyContent({ applyState: false });
       const hasSavedPages = Array.isArray(loadedState.pages) && loadedState.pages.length > 0;
 
@@ -1014,6 +1030,7 @@ function App() {
     currentProjectId,
     step,
     projectName,
+    siteLogoUrl,
     pages,
     selectedDesign,
     selectedVibeId,
@@ -1098,6 +1115,88 @@ function App() {
     setKirbyReady(true);
   };
 
+  const readFileAsDataUrl = (file) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden'));
+      reader.readAsDataURL(file);
+    });
+
+  const handleSiteLogoUpload = async (event) => {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+    event.target.value = '';
+    setSiteLogoError('');
+
+    const maxBytes = SITE_LOGO_MAX_MB * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setSiteLogoError(`Logo ist zu groß (max. ${SITE_LOGO_MAX_MB} MB).`);
+      return;
+    }
+
+    if (!String(file.type || '').toLowerCase().startsWith('image/')) {
+      setSiteLogoError('Bitte eine Bilddatei wählen (PNG, JPG, WEBP, SVG oder GIF).');
+      return;
+    }
+
+    setIsUploadingSiteLogo(true);
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      const res = await fetch(`${BACKEND_URL}/api/upload-site-logo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: file.name,
+          dataUrl
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success || !String(data?.logoPath || '').trim()) {
+        setSiteLogoError(data?.error || 'Logo konnte nicht gespeichert werden.');
+        return;
+      }
+
+      const uploadedLogoPath = String(data.logoPath).trim();
+      setSiteLogoUrl(uploadedLogoPath);
+      await fetch(`${BACKEND_URL}/api/update-site-meta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: projectName,
+          siteLogoUrl: uploadedLogoPath,
+          footerLine1,
+          footerLine2,
+          footerLine3
+        }),
+      });
+    } catch {
+      setSiteLogoError('Logo konnte nicht gespeichert werden.');
+    } finally {
+      setIsUploadingSiteLogo(false);
+    }
+  };
+
+  const removeSiteLogo = async () => {
+    setSiteLogoError('');
+    setSiteLogoUrl('');
+    try {
+      await fetch(`${BACKEND_URL}/api/update-site-meta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: projectName,
+          siteLogoUrl: '',
+          footerLine1,
+          footerLine2,
+          footerLine3
+        }),
+      });
+    } catch {
+      // ignore: will be synced on next regular save/sync
+    }
+  };
+
   const performStartNewProject = async (projectPath) => {
     isResettingProjectRef.current = true;
 
@@ -1114,6 +1213,8 @@ function App() {
     setCurrentProjectId('');
     setCurrentProjectPath('');
     setProjectName('');
+    setSiteLogoUrl('');
+    setSiteLogoError('');
     setPages(DEFAULT_PAGES.map((p) => ({ ...p })));
     setNewPageName('');
     setEditingPageId(null);
@@ -1144,6 +1245,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: 'Meine Website',
+          siteLogoUrl: '',
           footerLine1: '',
           footerLine2: '',
           footerLine3: '',
@@ -1183,6 +1285,7 @@ function App() {
           projectPath,
           state: {
             projectName: '',
+            siteLogoUrl: '',
             selectedDesign: 'minimalist',
             selectedVibeId: getDefaultVibeForStyle('minimalist')?.id || 'M-01',
             hostingProvider: TEST_HOSTING_DEFAULTS.hostingProvider,
@@ -1304,6 +1407,7 @@ function App() {
   const buildPublishSignature = (urlValue = websiteUrl, signatureValue = projectSignature) =>
     JSON.stringify({
       projectName: projectName.trim(),
+      siteLogoUrl: String(siteLogoUrl || '').trim(),
       pages: pages.map((p) => ({ id: p.id, title: p.title, selected: p.selected })),
       design: { selectedDesign, selectedVibeId },
       contentSignature: signatureValue || '',
@@ -1335,6 +1439,7 @@ function App() {
   const buildOnboardingSyncSignature = () =>
     JSON.stringify({
       projectName: projectName.trim(),
+      siteLogoUrl: String(siteLogoUrl || '').trim(),
       pages: pages.map((p) => ({ id: p.id, title: p.title, selected: p.selected })),
       design: { selectedDesign, selectedVibeId },
       footer: {
@@ -1358,6 +1463,7 @@ function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: projectName,
+        siteLogoUrl,
         footerLine1,
         footerLine2,
         footerLine3,
@@ -1488,6 +1594,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: projectName,
+          siteLogoUrl,
           footerLine1,
           footerLine2,
           footerLine3,
@@ -1621,7 +1728,7 @@ function App() {
 
   /* ---- Navigation ---- */
   const navItems = [
-    { label: 'Start', state: 'welcome' },
+    { label: 'Start', state: 'config' },
     { label: 'Seiten', state: 'pages' },
     { label: 'Design', state: 'design' },
     { label: 'Hosting', state: 'account' },
@@ -1638,7 +1745,7 @@ function App() {
   };
 
   const completedSteps = {
-    welcome: projectName.trim().length > 0,
+    config: projectName.trim().length > 0,
     pages: pages.some((page) => page.selected && String(page.id || '').trim() && String(page.title || '').trim()),
     design: Boolean(DESIGN_STYLES[selectedDesign]) && Boolean(activeVibe?.id),
     account:
@@ -1894,7 +2001,7 @@ function App() {
             <img
               src={BRAND_WORDMARK_DARK}
               alt={BRAND_NAME}
-              style={{ width: 'min(560px, 92vw)', height: 'auto', display: 'block', margin: '0 auto 0.45rem' }}
+              style={{ width: 'min(560px, 92vw)', height: 'auto', display: 'block', margin: '0 auto 0.45rem', transform: 'translateX(0.45rem)' }}
             />
             <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', marginBottom: '3rem', lineHeight: '1.6', marginTop: 0 }}>
               Your Content. Your Computer. Your Web.
@@ -2060,6 +2167,49 @@ function App() {
               <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website-Name</label>
               <input type="text" placeholder="z.B. Sarahs Fotografie" value={projectName}
                 onChange={e => setProjectName(e.target.value)} autoFocus />
+            </div>
+            <div className="input-group" style={{ marginTop: '1rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                Eigenes Logo (optional)
+              </label>
+              {siteLogoUrl && (
+                <div style={{ marginBottom: '0.65rem', border: '1px solid var(--border-color)', borderRadius: '8px', background: 'var(--surface-color)' }}>
+                  <img
+                    src={siteLogoUrl}
+                    alt="Eigenes Website-Logo"
+                    style={{ display: 'block', maxHeight: '72px', width: 'auto', maxWidth: '100%', margin: '0.6rem auto', objectFit: 'contain' }}
+                  />
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                <label className="btn-outline" style={{ padding: '0.62rem 1rem', cursor: isUploadingSiteLogo ? 'not-allowed' : 'pointer', opacity: isUploadingSiteLogo ? 0.65 : 1 }}>
+                  {isUploadingSiteLogo ? 'Logo wird hochgeladen…' : 'Logo auswählen'}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
+                    onChange={handleSiteLogoUpload}
+                    disabled={isUploadingSiteLogo}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+                {siteLogoUrl && (
+                  <button
+                    type="button"
+                    className="btn-outline"
+                    style={{ padding: '0.62rem 1rem' }}
+                    onClick={removeSiteLogo}
+                    disabled={isUploadingSiteLogo}
+                  >
+                    Logo entfernen
+                  </button>
+                )}
+              </div>
+              <p style={{ marginTop: '0.45rem', marginBottom: 0, color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                Falls gesetzt, wird das Bild statt des Text-Logos auf der Website angezeigt.
+              </p>
+              {siteLogoError && (
+                <p style={{ marginTop: '0.45rem', marginBottom: 0, color: '#ff8080', fontSize: '0.8rem' }}>{siteLogoError}</p>
+              )}
             </div>
             <button className="btn-primary" style={{ width: '100%', padding: '1rem', marginTop: '1.5rem' }}
               onClick={() => setStep('pages')}>

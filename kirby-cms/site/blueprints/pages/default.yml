@@ -47,3 +47,10 @@ columns:
                 fieldsets:
                   - button
                   - contactform
+          seodesc:
+            label: Google Beschreibung (Meta Description)
+            type: textarea
+            size: small
+            buttons: false
+            maxlength: 160
+            help: Eine kurze Zusammenfassung der Seite (max. 160 Zeichen). Wird in den Google-Suchergebnissen unter dem Titel angezeigt.

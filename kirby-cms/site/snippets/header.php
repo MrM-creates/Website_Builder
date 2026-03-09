@@ -10,6 +10,9 @@
         if ($parts === false) return $raw;
         $path = $parts['path'] ?? '/';
         if ($path === '') $path = '/';
+        if (!str_starts_with($path, '/')) {
+            $path = '/' . ltrim($path, '/');
+        }
         if (isset($parts['query']) && $parts['query'] !== '') {
             $path .= '?' . $parts['query'];
         }
@@ -18,6 +21,16 @@
         }
         return $path;
     };
+    $siteLogoValue = trim((string)$site->logo()->value());
+    $siteLogoPath = $siteLogoValue !== '' ? $toRelativePath($siteLogoValue) : '';
+    $siteLogoFsPath = '';
+    if ($siteLogoPath !== '') {
+        $logoPathOnly = parse_url($siteLogoPath, PHP_URL_PATH) ?: '';
+        if ($logoPathOnly !== '') {
+            $siteLogoFsPath = kirby()->root('index') . '/' . ltrim($logoPathOnly, '/');
+        }
+    }
+    $canRenderSiteLogo = $siteLogoPath !== '' && $siteLogoFsPath !== '' && is_file($siteLogoFsPath);
     ?>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -59,7 +72,11 @@
     <header class="site-header">
         <div class="logo">
             <a href="/" style="display: block; text-align: center; line-height: 1.1; text-decoration: none; color: var(--color-accent);">
-                <?= html($site->title()) ?>
+                <?php if ($canRenderSiteLogo): ?>
+                    <img src="<?= htmlspecialchars($siteLogoPath, ENT_QUOTES, 'UTF-8') ?>" alt="<?= esc($site->title()->value(), 'attr') ?>" class="site-logo-image" />
+                <?php else: ?>
+                    <?= html($site->title()) ?>
+                <?php endif ?>
             </a>
         </div>
         <nav class="main-navigation">

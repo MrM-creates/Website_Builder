@@ -16,7 +16,7 @@ const app = express();
 const PORT = 3001;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '25mb' }));
 
 const DEFAULT_ADMIN_EMAIL = 'admin@flatsite.app';
 const DEFAULT_ADMIN_PASSWORD = 'flatsite2026';
@@ -31,6 +31,7 @@ const REPAIR_LOG_FILE = path.join(FLATSITE_DIR, 'repair-events.log');
 const PROJECT_RECOVERY_DIR_NAME = '_recovery';
 const LIVE_CONTENT_DIR = path.join(__dirname, 'kirby-cms', 'content');
 const LIVE_CUSTOM_CSS_PATH = path.join(__dirname, 'kirby-cms', 'assets', 'css', 'custom.css');
+const LIVE_UPLOADS_DIR = path.join(__dirname, 'kirby-cms', 'assets', 'uploads');
 
 const parseField = (content, key) => {
     const match = content.match(new RegExp(`^${key}:\\s*(.+)$`, 'mi'));
@@ -227,7 +228,7 @@ const stringifyKirbyFields = (orderedEntries = []) => {
 
 const updateSiteMetaInContent = (
     contentDir,
-    { title = '', footerLine1 = '', footerLine2 = '', footerLine3 = '' } = {}
+    { title = '', siteLogoUrl = null, footerLine1 = '', footerLine2 = '', footerLine3 = '' } = {}
 ) => {
     const siteFile = path.join(contentDir, 'site.txt');
     const safeTitle = (title || '').trim() || 'Meine Website';
@@ -248,17 +249,38 @@ const updateSiteMetaInContent = (
     const merged = {
         ...existingFields,
         Title: resolvedTitle,
+        Logo:
+            siteLogoUrl === null || siteLogoUrl === undefined
+                ? normalizeSingleLineFieldValue(existingFields.Logo || '')
+                : normalizeSingleLineFieldValue(siteLogoUrl),
         Footerline1: normalizeSingleLineFieldValue(footerLine1),
         Footerline2: normalizeSingleLineFieldValue(footerLine2),
         Footerline3: normalizeSingleLineFieldValue(footerLine3)
     };
 
-    const orderedKeys = ['Title', 'Footerline1', 'Footerline2', 'Footerline3'];
+    const orderedKeys = ['Title', 'Logo', 'Footerline1', 'Footerline2', 'Footerline3'];
     const restKeys = Object.keys(merged).filter((key) => !orderedKeys.includes(key)).sort();
     const allKeys = [...orderedKeys, ...restKeys];
 
     const updated = stringifyKirbyFields(allKeys.map((key) => [key, merged[key]]));
     fs.writeFileSync(siteFile, updated, 'utf-8');
+};
+
+const readSiteMetaFromContent = (contentDir) => {
+    const siteFile = path.join(contentDir, 'site.txt');
+    let content = '';
+    if (fs.existsSync(siteFile)) {
+        content = fs.readFileSync(siteFile, 'utf-8');
+    }
+
+    const fields = parseSingleLineKirbyFields(content);
+    return {
+        title: normalizeSingleLineFieldValue(fields.Title || ''),
+        logo: normalizeSingleLineFieldValue(fields.Logo || ''),
+        footerLine1: normalizeSingleLineFieldValue(fields.Footerline1 || ''),
+        footerLine2: normalizeSingleLineFieldValue(fields.Footerline2 || ''),
+        footerLine3: normalizeSingleLineFieldValue(fields.Footerline3 || '')
+    };
 };
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1341,6 +1363,15 @@ const trimWrappedQuotes = (value = '') => {
     return raw.replace(/^['"]+|['"]+$/g, '').trim();
 };
 
+const decodeCommonHtmlEntities = (value = '') =>
+    String(value ?? '')
+        .replace(/&amp;/gi, '&')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#x27;|&#39;/gi, "'")
+        .replace(/&#x2f;|&#47;/gi, '/')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>');
+
 const isSkippableAssetReference = (value = '') => {
     const raw = String(value ?? '').trim().toLowerCase();
     return (
@@ -1357,6 +1388,12 @@ const isSkippableAssetReference = (value = '') => {
 
 const normalizeLocalAssetPath = (reference = '') => {
     let current = trimWrappedQuotes(reference);
+    current = decodeCommonHtmlEntities(current).trim();
+    try {
+        current = decodeURIComponent(current);
+    } catch {
+        // keep original if malformed percent-encoding
+    }
     if (!current || isSkippableAssetReference(current)) return '';
 
     if (/^[a-z][a-z0-9+.-]*:/i.test(current)) {
@@ -2017,6 +2054,8 @@ const projectSnapshotContentPath = (projectPath, options = {}) =>
     path.join(resolveProjectMetaDir(projectPath, options), 'snapshot', 'content');
 const projectSnapshotCssPath = (projectPath, options = {}) =>
     path.join(resolveProjectMetaDir(projectPath, options), 'snapshot', 'custom.css');
+const projectSnapshotUploadsPath = (projectPath, options = {}) =>
+    path.join(resolveProjectMetaDir(projectPath, options), 'snapshot', 'uploads');
 const HISTORY_FILE = path.join(FLATSITE_DIR, 'projects-history.json');
 
 const recoverAtomicJsonStateOnStartup = () => {
@@ -2261,6 +2300,7 @@ const withProjectLock = (projectPath, task) => {
 const snapshotLiveProjectToStore = (projectPath) => {
     const snapshotContentDir = projectSnapshotContentPath(projectPath, { forWrite: true });
     const snapshotCss = projectSnapshotCssPath(projectPath, { forWrite: true });
+    const snapshotUploadsDir = projectSnapshotUploadsPath(projectPath, { forWrite: true });
 
     fs.rmSync(snapshotContentDir, { recursive: true, force: true });
     fs.mkdirSync(path.dirname(snapshotContentDir), { recursive: true });
@@ -2276,11 +2316,20 @@ const snapshotLiveProjectToStore = (projectPath) => {
     } else {
         fs.writeFileSync(snapshotCss, '', 'utf-8');
     }
+
+    fs.rmSync(snapshotUploadsDir, { recursive: true, force: true });
+    fs.mkdirSync(path.dirname(snapshotUploadsDir), { recursive: true });
+    if (fs.existsSync(LIVE_UPLOADS_DIR)) {
+        fs.cpSync(LIVE_UPLOADS_DIR, snapshotUploadsDir, { recursive: true });
+    } else {
+        fs.mkdirSync(snapshotUploadsDir, { recursive: true });
+    }
 };
 
 const restoreStoredProjectToLive = (projectPath) => {
     const snapshotContentDir = projectSnapshotContentPath(projectPath);
     const snapshotCss = projectSnapshotCssPath(projectPath);
+    const snapshotUploadsDir = projectSnapshotUploadsPath(projectPath);
 
     fs.rmSync(LIVE_CONTENT_DIR, { recursive: true, force: true });
     if (fs.existsSync(snapshotContentDir)) {
@@ -2292,6 +2341,13 @@ const restoreStoredProjectToLive = (projectPath) => {
     fs.mkdirSync(path.dirname(LIVE_CUSTOM_CSS_PATH), { recursive: true });
     if (fs.existsSync(snapshotCss)) {
         fs.copyFileSync(snapshotCss, LIVE_CUSTOM_CSS_PATH);
+    }
+
+    fs.rmSync(LIVE_UPLOADS_DIR, { recursive: true, force: true });
+    if (fs.existsSync(snapshotUploadsDir)) {
+        fs.cpSync(snapshotUploadsDir, LIVE_UPLOADS_DIR, { recursive: true });
+    } else {
+        fs.mkdirSync(LIVE_UPLOADS_DIR, { recursive: true });
     }
 };
 
@@ -3412,15 +3468,98 @@ app.post('/api/update-site-title', (req, res) => {
 
 // ENDPOINT: UPDATE SITE META (title + footer fields from Flatsite UI)
 app.post('/api/update-site-meta', (req, res) => {
-    const { title, footerLine1 = '', footerLine2 = '', footerLine3 = '' } = req.body ?? {};
+    const { title, siteLogoUrl, footerLine1 = '', footerLine2 = '', footerLine3 = '' } = req.body ?? {};
     const contentDir = path.join(__dirname, 'kirby-cms', 'content');
 
     try {
-        updateSiteMetaInContent(contentDir, { title, footerLine1, footerLine2, footerLine3 });
+        updateSiteMetaInContent(contentDir, { title, siteLogoUrl, footerLine1, footerLine2, footerLine3 });
         res.json({ success: true });
     } catch (err) {
         console.error('Fehler beim Aktualisieren der Site-Metadaten:', err);
         res.status(500).json({ error: 'Fehler beim Speichern der Site-Metadaten' });
+    }
+});
+
+app.get('/api/site-meta', (req, res) => {
+    try {
+        const contentDir = path.join(__dirname, 'kirby-cms', 'content');
+        const siteMeta = readSiteMetaFromContent(contentDir);
+        res.json({ success: true, siteMeta });
+    } catch (err) {
+        console.error('Fehler beim Laden der Site-Metadaten:', err);
+        res.status(500).json({ error: 'Site-Metadaten konnten nicht geladen werden' });
+    }
+});
+
+const LOGO_MIME_TO_EXT = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'image/svg+xml': 'svg'
+};
+
+const extractImagePayloadFromDataUrl = (dataUrl = '') => {
+    const raw = String(dataUrl || '').trim();
+    const match = raw.match(/^data:([^;,]+);base64,(.+)$/i);
+    if (!match) {
+        throw new Error('Ungültiges Bildformat');
+    }
+
+    const mime = String(match[1] || '').toLowerCase();
+    const base64Data = String(match[2] || '');
+    const extFromMime = LOGO_MIME_TO_EXT[mime];
+    if (!extFromMime) {
+        throw new Error('Dateityp wird nicht unterstützt');
+    }
+
+    const buffer = Buffer.from(base64Data, 'base64');
+    if (!buffer.length) {
+        throw new Error('Leere Bilddatei');
+    }
+
+    return { mime, extFromMime, buffer };
+};
+
+const deriveLogoExtension = (filename = '', fallbackExt = 'png') => {
+    const fileExt = String(path.extname(String(filename || '') || '').replace('.', '')).toLowerCase();
+    if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(fileExt)) {
+        return fileExt === 'jpeg' ? 'jpg' : fileExt;
+    }
+    return fallbackExt;
+};
+
+app.post('/api/upload-site-logo', (req, res) => {
+    const { filename = '', dataUrl = '' } = req.body ?? {};
+    const maxBytes = 12 * 1024 * 1024;
+
+    try {
+        const { extFromMime, buffer } = extractImagePayloadFromDataUrl(dataUrl);
+        if (buffer.length > maxBytes) {
+            return res.status(400).json({ error: 'Logo ist zu groß (max. 12 MB)' });
+        }
+
+        const ext = deriveLogoExtension(filename, extFromMime);
+        fs.mkdirSync(LIVE_UPLOADS_DIR, { recursive: true });
+
+        for (const entry of fs.readdirSync(LIVE_UPLOADS_DIR)) {
+            if (/^site-logo\./i.test(entry)) {
+                fs.rmSync(path.join(LIVE_UPLOADS_DIR, entry), { force: true });
+            }
+        }
+
+        const targetName = `site-logo.${ext}`;
+        const targetPath = path.join(LIVE_UPLOADS_DIR, targetName);
+        fs.writeFileSync(targetPath, buffer);
+
+        res.json({
+            success: true,
+            logoPath: `/assets/uploads/${targetName}`
+        });
+    } catch (err) {
+        const message = String(err?.message || 'Logo konnte nicht gespeichert werden');
+        const status = /zu groß|format|unterstützt|leer/i.test(message) ? 400 : 500;
+        res.status(status).json({ error: message });
     }
 });
 
