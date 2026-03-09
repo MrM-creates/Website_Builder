@@ -1108,110 +1108,6 @@ const buildPublishPathPrefix = (websiteUrl, targetPath) => {
     return normalizePublicPath(targetPath);
 };
 
-const normalizePublicAssetPath = (value = '') => {
-    const raw = String(value || '').trim();
-    if (!raw) return '';
-
-    try {
-        const parsed = new URL(raw);
-        return normalizePathForFileOutput(parsed.pathname || '/');
-    } catch {
-        const clean = raw.split('?')[0].split('#')[0].trim();
-        if (!clean.startsWith('/')) return '';
-        return normalizePathForFileOutput(clean);
-    }
-};
-
-const rewriteSrcsetValue = (value = '', pathPrefix = '') => {
-    if (!pathPrefix) return String(value || '');
-    const prefix = pathPrefix.replace(/\/+$/g, '');
-
-    return String(value || '')
-        .split(',')
-        .map((chunk) => {
-            const entry = chunk.trim();
-            if (!entry) return entry;
-
-            const [urlPart, descriptor] = entry.split(/\s+/, 2);
-            let rewrittenUrl = urlPart;
-
-            if (urlPart.startsWith('/') && !urlPart.startsWith('//')) {
-                rewrittenUrl = `${prefix}${urlPart}`;
-            }
-
-            return descriptor ? `${rewrittenUrl} ${descriptor}` : rewrittenUrl;
-        })
-        .join(', ');
-};
-
-const collectReferencedPublicAssetPaths = (html = '') => {
-    const content = String(html || '');
-    const refs = new Set();
-
-    const addPath = (candidate) => {
-        const normalized = normalizePublicAssetPath(candidate);
-        if (normalized.startsWith('/media/') || normalized.startsWith('/assets/')) {
-            refs.add(normalized);
-        }
-    };
-
-    const attrRegex = /\b(?:src|href|poster|data-src|content)=("|')([^"']+)\1/gi;
-    let match;
-    while ((match = attrRegex.exec(content)) !== null) {
-        addPath(match[2]);
-    }
-
-    const srcsetRegex = /\b(?:srcset|data-srcset)=("|')([^"']+)\1/gi;
-    while ((match = srcsetRegex.exec(content)) !== null) {
-        for (const part of String(match[2] || '').split(',')) {
-            const trimmed = part.trim();
-            if (!trimmed) continue;
-            const [urlPart] = trimmed.split(/\s+/, 1);
-            addPath(urlPart);
-        }
-    }
-
-    const cssUrlRegex = /url\((['"]?)([^'")]+)\1\)/gi;
-    while ((match = cssUrlRegex.exec(content)) !== null) {
-        addPath(match[2]);
-    }
-
-    return refs;
-};
-
-const prewarmKirbyMediaDerivatives = async (paths = []) => {
-    const unique = [...new Set(paths.filter(Boolean))];
-    for (const mediaPath of unique) {
-        if (!String(mediaPath).startsWith('/media/')) continue;
-        try {
-            const response = await fetchWithTimeout(`${KIRBY_LOCAL_ORIGIN}${mediaPath}`, 15000);
-            if (!response.ok) continue;
-            // Drain the body to complete generation/caching in Kirby.
-            await response.arrayBuffer();
-        } catch {
-            // Non-fatal: deployment continues, best-effort prewarm only.
-        }
-    }
-};
-
-const materializeReferencedAssets = async (exportRoot, paths = []) => {
-    const unique = [...new Set(paths.filter(Boolean))];
-    for (const assetPath of unique) {
-        try {
-            const response = await fetchWithTimeout(`${KIRBY_LOCAL_ORIGIN}${assetPath}`, 15000);
-            if (!response.ok) continue;
-            const buffer = Buffer.from(await response.arrayBuffer());
-            const relative = assetPath.replace(/^\/+/, '');
-            if (!relative) continue;
-            const outputPath = path.join(exportRoot, relative);
-            fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-            fs.writeFileSync(outputPath, buffer);
-        } catch {
-            // Non-fatal: keep best-effort materialization only.
-        }
-    }
-};
-
 const rewriteHtmlForStaticDeploy = (html, { websiteUrl, targetPath }) => {
     let output = String(html ?? '');
     const publishBaseUrl = buildPublishBaseUrl(websiteUrl, targetPath);
@@ -1224,12 +1120,8 @@ const rewriteHtmlForStaticDeploy = (html, { websiteUrl, targetPath }) => {
     }
 
     if (pathPrefix) {
-        output = output.replace(/(href|src|content|poster|data-src)=("|')\/(?!\/)/gi, `$1=$2${pathPrefix}/`);
+        output = output.replace(/(href|src|content)=("|')\/(?!\/)/gi, `$1=$2${pathPrefix}/`);
         output = output.replace(/url\((["']?)\/(?!\/)/gi, `url($1${pathPrefix}/`);
-        output = output.replace(/\b(srcset|data-srcset)=("|')([^"']+)\2/gi, (full, attr, quote, value) => {
-            const rewritten = rewriteSrcsetValue(value, pathPrefix);
-            return `${attr}=${quote}${rewritten}${quote}`;
-        });
     }
 
     return output;
@@ -1324,21 +1216,15 @@ const buildStaticDeploySource = async ({ kirbyRoot, websiteUrl, targetPath }) =>
 
     const contentRoot = path.join(kirbyRoot, 'content');
     const pagePaths = listPublicPagePaths(contentRoot);
-    const referencedAssetPaths = new Set();
 
     for (const pagePath of pagePaths) {
         const rawHtml = await fetchKirbyPageHtml(pagePath);
-        for (const assetPath of collectReferencedPublicAssetPaths(rawHtml)) {
-            referencedAssetPaths.add(assetPath);
-        }
         const rewrittenHtml = rewriteHtmlForStaticDeploy(rawHtml, { websiteUrl, targetPath });
         writeStaticPage(exportRoot, pagePath, rewrittenHtml);
     }
 
-    await prewarmKirbyMediaDerivatives([...referencedAssetPaths]);
     copyDirectoryIfExists(path.join(kirbyRoot, 'assets'), path.join(exportRoot, 'assets'));
     copyDirectoryIfExists(path.join(kirbyRoot, 'media'), path.join(exportRoot, 'media'));
-    await materializeReferencedAssets(exportRoot, [...referencedAssetPaths]);
     removePathIfExists(path.join(exportRoot, 'media', 'panel'));
     writeUtf8Htaccess(exportRoot);
 
