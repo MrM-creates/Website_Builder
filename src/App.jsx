@@ -341,7 +341,7 @@ function HelpBadgeIcon({ label = 'Hilfe' }) {
 function App() {
   const BACKEND_URL = 'http://127.0.0.1:3001';
   const BRAND_NAME = 'Flider.';
-  const BRAND_WORDMARK_DARK = '/brand/flider_wordmark_dark.svg';
+  const BRAND_WORDMARK_DARK = '/brand/flider_wordmark_dark.svg?v=3';
 
   /* ---- State ---- */
   const [step, setStep] = useState('welcome');
@@ -1767,39 +1767,46 @@ function App() {
           ================================================================ */}
       {step !== 'welcome' && (
         <header className="glass-panel fade-in" style={{
-          padding: '1rem 2rem', display: 'flex', alignItems: 'center', gap: '1.5rem',
+          padding: '1rem 2rem', display: 'flex', alignItems: 'center', gap: '1.1rem',
           borderBottom: '1px solid var(--border-color)', borderRadius: 0, position: 'sticky', top: 0, zIndex: 10
         }}>
           {/* Logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', minWidth: 0 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.28rem', minWidth: 0, maxWidth: 'clamp(300px, 38vw, 580px)' }}>
             <button
               type="button"
               aria-label={`${BRAND_NAME} Startseite`}
               style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
               onClick={() => { setShowProjectList(false); setProjectError(''); setStep('welcome'); }}
             >
-              <img src={BRAND_WORDMARK_DARK} alt={BRAND_NAME} style={{ height: '36px', width: 'auto', display: 'block' }} />
+              <img src={BRAND_WORDMARK_DARK} alt={BRAND_NAME} style={{ height: '42px', width: 'auto', display: 'block' }} />
             </button>
             {projectNameInHeader && (
-              <span
+              <div
                 title={projectNameInHeader}
                 style={{
-                  display: 'inline-block',
-                  maxWidth: '240px',
+                  display: 'inline-flex',
+                  alignItems: 'baseline',
+                  justifyContent: 'flex-start',
+                  gap: '0.35rem',
+                  maxWidth: '100%',
                   overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  fontSize: '0.9rem',
-                  fontWeight: 700,
-                  color: 'var(--text-primary)',
-                  padding: '0.2rem 0.55rem',
-                  borderRadius: '7px',
-                  border: '1px solid var(--border-color)',
-                  background: 'rgba(255,255,255,0.05)'
+                  fontSize: '0.74rem',
+                  lineHeight: 1.2
                 }}
               >
-                {projectNameInHeader}
-              </span>
+                <span style={{ color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>
+                  Projekt:
+                </span>
+                <span style={{
+                  color: 'var(--text-primary)',
+                  fontWeight: 700,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }}>
+                  {projectNameInHeader}
+                </span>
+              </div>
             )}
           </div>
 

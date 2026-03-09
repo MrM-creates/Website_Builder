@@ -1,6 +1,6 @@
-<svg width="900" height="220" viewBox="0 0 900 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="420" height="220" viewBox="-6 0 420 220" fill="none" xmlns="http://www.w3.org/2000/svg">
   <text
-    x="70"
+    x="-4"
     y="146"
     fill="#111111"
     font-family="'Space Mono', monospace"
@@ -10,5 +10,5 @@
     text-rendering="geometricPrecision">
     Flider
   </text>
-  <circle cx="456" cy="136" r="7" fill="#111111"/>
+  <circle cx="384" cy="136" r="7" fill="#111111"/>
 </svg>
