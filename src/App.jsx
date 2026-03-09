@@ -1649,6 +1649,7 @@ function App() {
     editor: step === 'editor' || setupDone || kirbyReady,
   };
   const projectNameInHeader = projectName.trim() || (currentProjectId ? 'Unbenanntes Projekt' : '');
+  const appFooterYear = new Date().getFullYear();
   const diagnosticServices = diagnostics?.health
     ? [
       diagnostics.health.backend,
@@ -2650,6 +2651,18 @@ function App() {
         )}
 
       </main>
+
+      <footer style={{
+        borderTop: '1px solid var(--border-color)',
+        padding: '0.7rem 1.2rem',
+        textAlign: 'center',
+        fontSize: '0.76rem',
+        color: 'var(--text-secondary)',
+        background: 'rgba(8,8,10,0.72)',
+        letterSpacing: '0.02em'
+      }}>
+        Designed with the power of AI · © {appFooterYear} MrM
+      </footer>
 
       {/* ================================================================
           MODAL: EXPORT / PUBLISH
