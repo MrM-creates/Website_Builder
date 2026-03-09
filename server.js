@@ -1144,13 +1144,13 @@ const rewriteSrcsetValue = (value = '', pathPrefix = '') => {
         .join(', ');
 };
 
-const collectReferencedMediaPaths = (html = '') => {
+const collectReferencedPublicAssetPaths = (html = '') => {
     const content = String(html || '');
     const refs = new Set();
 
     const addPath = (candidate) => {
         const normalized = normalizePublicAssetPath(candidate);
-        if (normalized.startsWith('/media/')) {
+        if (normalized.startsWith('/media/') || normalized.startsWith('/assets/')) {
             refs.add(normalized);
         }
     };
@@ -1182,6 +1182,7 @@ const collectReferencedMediaPaths = (html = '') => {
 const prewarmKirbyMediaDerivatives = async (paths = []) => {
     const unique = [...new Set(paths.filter(Boolean))];
     for (const mediaPath of unique) {
+        if (!String(mediaPath).startsWith('/media/')) continue;
         try {
             const response = await fetchWithTimeout(`${KIRBY_LOCAL_ORIGIN}${mediaPath}`, 15000);
             if (!response.ok) continue;
@@ -1189,6 +1190,24 @@ const prewarmKirbyMediaDerivatives = async (paths = []) => {
             await response.arrayBuffer();
         } catch {
             // Non-fatal: deployment continues, best-effort prewarm only.
+        }
+    }
+};
+
+const materializeReferencedAssets = async (exportRoot, paths = []) => {
+    const unique = [...new Set(paths.filter(Boolean))];
+    for (const assetPath of unique) {
+        try {
+            const response = await fetchWithTimeout(`${KIRBY_LOCAL_ORIGIN}${assetPath}`, 15000);
+            if (!response.ok) continue;
+            const buffer = Buffer.from(await response.arrayBuffer());
+            const relative = assetPath.replace(/^\/+/, '');
+            if (!relative) continue;
+            const outputPath = path.join(exportRoot, relative);
+            fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+            fs.writeFileSync(outputPath, buffer);
+        } catch {
+            // Non-fatal: keep best-effort materialization only.
         }
     }
 };
@@ -1305,20 +1324,21 @@ const buildStaticDeploySource = async ({ kirbyRoot, websiteUrl, targetPath }) =>
 
     const contentRoot = path.join(kirbyRoot, 'content');
     const pagePaths = listPublicPagePaths(contentRoot);
-    const referencedMediaPaths = new Set();
+    const referencedAssetPaths = new Set();
 
     for (const pagePath of pagePaths) {
         const rawHtml = await fetchKirbyPageHtml(pagePath);
-        for (const mediaPath of collectReferencedMediaPaths(rawHtml)) {
-            referencedMediaPaths.add(mediaPath);
+        for (const assetPath of collectReferencedPublicAssetPaths(rawHtml)) {
+            referencedAssetPaths.add(assetPath);
         }
         const rewrittenHtml = rewriteHtmlForStaticDeploy(rawHtml, { websiteUrl, targetPath });
         writeStaticPage(exportRoot, pagePath, rewrittenHtml);
     }
 
-    await prewarmKirbyMediaDerivatives([...referencedMediaPaths]);
+    await prewarmKirbyMediaDerivatives([...referencedAssetPaths]);
     copyDirectoryIfExists(path.join(kirbyRoot, 'assets'), path.join(exportRoot, 'assets'));
     copyDirectoryIfExists(path.join(kirbyRoot, 'media'), path.join(exportRoot, 'media'));
+    await materializeReferencedAssets(exportRoot, [...referencedAssetPaths]);
     removePathIfExists(path.join(exportRoot, 'media', 'panel'));
     writeUtf8Htaccess(exportRoot);
 
