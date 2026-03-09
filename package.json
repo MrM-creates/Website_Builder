@@ -16,6 +16,7 @@
     "dev:bg:autostart:install": "bash ./scripts/dev-bg-autostart-install.sh",
     "dev:bg:autostart:status": "bash ./scripts/dev-bg-autostart-status.sh",
     "dev:bg:autostart:uninstall": "bash ./scripts/dev-bg-autostart-uninstall.sh",
+    "brand:icons": "bash ./scripts/brand-icons-build.sh",
     "smoke:projects": "bash ./scripts/smoke-project-persistence.sh",
     "build": "vite build",
     "lint": "eslint .",

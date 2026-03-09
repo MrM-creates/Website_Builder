@@ -340,6 +340,8 @@ function HelpBadgeIcon({ label = 'Hilfe' }) {
 
 function App() {
   const BACKEND_URL = 'http://127.0.0.1:3001';
+  const BRAND_NAME = 'Flider.';
+  const BRAND_WORDMARK_DARK = '/brand/flider_wordmark_dark.svg';
 
   /* ---- State ---- */
   const [step, setStep] = useState('welcome');
@@ -1742,13 +1744,14 @@ function App() {
         }}>
           {/* Logo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', minWidth: 0 }}>
-            <div style={{
-              fontWeight: 800, fontSize: '1.2rem', letterSpacing: '-0.5px', cursor: 'pointer',
-              background: 'linear-gradient(135deg, var(--text-primary) 0%, rgba(255,255,255,0.5) 100%)',
-              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
-            }} onClick={() => { setShowProjectList(false); setProjectError(''); setStep('welcome'); }}>
-              Flatsite
-            </div>
+            <button
+              type="button"
+              aria-label={`${BRAND_NAME} Startseite`}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
+              onClick={() => { setShowProjectList(false); setProjectError(''); setStep('welcome'); }}
+            >
+              <img src={BRAND_WORDMARK_DARK} alt={BRAND_NAME} style={{ height: '36px', width: 'auto', display: 'block' }} />
+            </button>
             {projectNameInHeader && (
               <span
                 title={projectNameInHeader}
@@ -1852,16 +1855,13 @@ function App() {
         {/* ====== STEP: WELCOME ====== */}
         {step === 'welcome' && (
           <div className="fade-in" style={{ textAlign: 'center', maxWidth: '600px', width: '100%', margin: '0 auto' }}>
-            <div style={{
-              fontWeight: 800, fontSize: '3rem', letterSpacing: '-1px', marginBottom: '1rem',
-              background: 'linear-gradient(135deg, #fff 0%, #aaa 100%)',
-              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
-            }}>
-              Flatsite
-            </div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', marginBottom: '3rem', lineHeight: '1.6' }}>
-              Dein Content. Dein Computer. Dein Web.<br />
-              Gestalte deine Website ganz ohne Stress lokal bei dir und bringe sie mit einem Klick blitzschnell online.
+            <img
+              src={BRAND_WORDMARK_DARK}
+              alt={BRAND_NAME}
+              style={{ width: 'min(560px, 92vw)', height: 'auto', display: 'block', margin: '0 auto 0.45rem' }}
+            />
+            <p style={{ color: 'var(--text-secondary)', fontSize: '1.2rem', marginBottom: '3rem', lineHeight: '1.6', marginTop: 0 }}>
+              Your Content. Your Computer. Your Web.
             </p>
             <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
               <button className="btn-primary fade-in" style={{ padding: '1rem 2rem', fontSize: '1.1rem', minWidth: '220px', boxShadow: '0 8px 20px rgba(79, 172, 254, 0.3)' }}
@@ -2217,7 +2217,7 @@ function App() {
           <div className="glass-panel fade-in" style={{ maxWidth: '600px', width: '100%', padding: '3rem', borderRadius: '12px' }}>
             <h2 style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>Wo soll dein Web wohnen?</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>
-              Trage hier die Zugangsdaten deines Anbieters ein. Flatsite kümmert sich um den Rest.
+              Trage hier die Zugangsdaten deines Anbieters ein. {BRAND_NAME} kümmert sich um den Rest.
             </p>
 
             <div style={{
@@ -2252,9 +2252,9 @@ function App() {
               {showHostingWhy && (
                 <div style={{ padding: '0 0.9rem 0.9rem', color: 'var(--text-secondary)', fontSize: '0.86rem', lineHeight: 1.55 }}>
                   Damit deine Website im Internet erreichbar ist, muss sie auf einen Webserver hochgeladen werden.
-                  Dafür braucht Flatsite einmalig die Zugangsdaten deines Anbieters.
+                  Dafür braucht {BRAND_NAME} einmalig die Zugangsdaten deines Anbieters.
                   <br />
-                  Deine Inhalte bearbeitest du weiterhin lokal in Flatsite.
+                  Deine Inhalte bearbeitest du weiterhin lokal in {BRAND_NAME}
                 </div>
               )}
             </div>
@@ -2325,7 +2325,7 @@ function App() {
 
             <button className="btn-primary" style={{ width: '100%', padding: '1rem', marginTop: '0.5rem' }}
               onClick={handleHostingComplete} disabled={isSettingUp}>
-              {isSettingUp ? 'Flatsite richtet alles ein...' : 'Fertig einrichten & zur Übersicht'}
+              {isSettingUp ? `${BRAND_NAME} richtet alles ein...` : 'Fertig einrichten & zur Übersicht'}
             </button>
           </div>
         )}
@@ -2621,7 +2621,7 @@ function App() {
             <button onClick={() => { setShowExportModal(false); setExportResult(''); }} style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '0.5rem', fontSize: '1.2rem' }}>✖</button>
             <h2 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Website live schalten</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>
-              Flatsite macht alles bereit und bringt deine Seite ins Netz.
+              {BRAND_NAME} macht alles bereit und bringt deine Seite ins Netz.
               <br />
               Speicherort: <strong>{targetPath || '/'}</strong>{websiteUrl ? <> · Website-Adresse: <strong>{websiteUrl}</strong></> : null}
             </p>
@@ -2629,7 +2629,7 @@ function App() {
             {isExporting ? (
               <div style={{ padding: '2rem' }}>
                 <div style={{ width: '40px', height: '40px', border: '3px solid rgba(255,255,255,0.1)', borderTopColor: '#4facfe', borderRadius: '50%', margin: '0 auto', animation: 'spin 1s linear infinite' }}></div>
-                <p style={{ marginTop: '1.5rem', fontSize: '1.1rem' }}>Flatsite macht alles bereit und bringt deine Seite ins Netz...</p>
+                <p style={{ marginTop: '1.5rem', fontSize: '1.1rem' }}>{BRAND_NAME} macht alles bereit und bringt deine Seite ins Netz...</p>
                 <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1rem' }}>
                   <button
                     className="btn-outline"
