@@ -2099,6 +2099,9 @@ const listProjects = () => {
     const activeRef = getActiveProjectRef();
 
     const projects = [];
+    const nextHistory = [];
+    let historyChanged = false;
+    let activeChanged = false;
     for (const entry of history.projects) {
         try {
             const projectPath = normalizeProjectPath(entry.path);
@@ -2106,6 +2109,42 @@ const listProjects = () => {
             const manifest = readProjectManifest(projectPath, { migrate: true });
             if (!manifest) continue;
             const manifestId = ensureStableProjectId(manifest.id);
+            const state = readJsonFileOrNull(projectStatePath(projectPath)) || {};
+            const stateProjectName = String(state?.projectName || '').trim();
+            const manifestName = String(manifest?.name || '').trim();
+            const autoDirName = path.basename(projectPath || '');
+            const isActiveCandidate = activeRef.projectId
+                ? manifestId === activeRef.projectId
+                : activeRef.projectPath
+                    ? projectPath === activeRef.projectPath
+                    : false;
+
+            // Hide aborted placeholder projects (created by "Neues Projekt" + cancel)
+            // from the recent list to prevent list growth.
+            const isAbortedAutoDraft =
+                AUTO_PROJECT_DIR_PATTERN.test(autoDirName) &&
+                AUTO_PROJECT_DIR_PATTERN.test(manifestName) &&
+                stateProjectName.length === 0 &&
+                state?.setupDone !== true &&
+                state?.isLive !== true;
+
+            if (isAbortedAutoDraft && !isActiveCandidate) {
+                historyChanged = true;
+                continue;
+            }
+            if (isAbortedAutoDraft && isActiveCandidate) {
+                historyChanged = true;
+                activeChanged = true;
+                continue;
+            }
+
+            nextHistory.push({
+                id: manifestId,
+                name: manifest.name || entry.name || path.basename(projectPath) || 'Unbenanntes Projekt',
+                path: projectPath,
+                createdAt: manifest.createdAt || entry.createdAt || null,
+                updatedAt: manifest.updatedAt || entry.updatedAt || null
+            });
 
             projects.push({
                 id: manifestId,
@@ -2113,11 +2152,7 @@ const listProjects = () => {
                 path: projectPath,
                 createdAt: manifest.createdAt || null,
                 updatedAt: manifest.updatedAt || entry.updatedAt || null,
-                isActive: activeRef.projectId
-                    ? manifestId === activeRef.projectId
-                    : activeRef.projectPath
-                        ? projectPath === activeRef.projectPath
-                        : false
+                isActive: isActiveCandidate
             });
         } catch {
             // ignore invalid history entries
@@ -2129,6 +2164,13 @@ const listProjects = () => {
         const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
         return bTime - aTime;
     });
+
+    if (historyChanged) {
+        writeProjectHistory({ projects: nextHistory.slice(0, 50) });
+    }
+    if (activeChanged) {
+        setActiveProjectRef({ projectPath: '', projectId: '' });
+    }
 
     return projects;
 };
