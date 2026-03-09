@@ -1,0 +1,115 @@
+<svg width="1600" height="980" viewBox="0 0 1600 980" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1600" y2="980" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0A0B0E"/>
+      <stop offset="1" stop-color="#12151B"/>
+    </linearGradient>
+    <linearGradient id="canvas" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FCFCFD"/>
+      <stop offset="1" stop-color="#F4F5F7"/>
+    </linearGradient>
+    <filter id="shadow" x="0" y="0" width="200%" height="200%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="980" fill="url(#bg)"/>
+
+  <!-- Header -->
+  <rect x="24" y="20" width="1552" height="74" rx="12" fill="#0F1116" stroke="#2A2F3A"/>
+  <text x="52" y="64" fill="#F4F6FA" font-family="Space Mono, monospace" font-size="34">Flider.</text>
+  <text x="250" y="64" fill="#8F99A8" font-family="Inter, sans-serif" font-size="20">Canvas Editor (Kirby-backed)</text>
+
+  <rect x="1160" y="36" width="130" height="42" rx="10" fill="#1A1E27" stroke="#394150"/>
+  <text x="1198" y="63" fill="#C7CEDA" font-family="Inter, sans-serif" font-size="18">Vorschau</text>
+
+  <rect x="1304" y="36" width="120" height="42" rx="10" fill="#8CC63F"/>
+  <text x="1332" y="63" fill="#0F1605" font-family="Inter, sans-serif" font-size="18" font-weight="700">Speichern</text>
+
+  <rect x="1438" y="36" width="120" height="42" rx="10" fill="#C53A3A"/>
+  <text x="1468" y="63" fill="#FFF0F0" font-family="Inter, sans-serif" font-size="18" font-weight="700">Live</text>
+
+  <!-- Left panel: Site structure -->
+  <rect x="24" y="110" width="280" height="846" rx="12" fill="#0F1116" stroke="#2A2F3A"/>
+  <text x="46" y="145" fill="#D5DCE8" font-family="Inter, sans-serif" font-size="19" font-weight="600">Seiten</text>
+
+  <rect x="40" y="165" width="248" height="52" rx="10" fill="#1A2030" stroke="#4F7ECF"/>
+  <text x="58" y="197" fill="#EAF0FB" font-family="Inter, sans-serif" font-size="18">Portfolio</text>
+
+  <rect x="40" y="225" width="248" height="52" rx="10" fill="#151921" stroke="#2A2F3A"/>
+  <text x="58" y="257" fill="#BFC8D8" font-family="Inter, sans-serif" font-size="18">Über mich</text>
+
+  <rect x="40" y="285" width="248" height="52" rx="10" fill="#151921" stroke="#2A2F3A"/>
+  <text x="58" y="317" fill="#BFC8D8" font-family="Inter, sans-serif" font-size="18">Kontakt</text>
+
+  <rect x="40" y="356" width="248" height="210" rx="10" fill="#12161E" stroke="#2A2F3A"/>
+  <text x="56" y="388" fill="#D5DCE8" font-family="Inter, sans-serif" font-size="16" font-weight="600">Block-Bibliothek</text>
+  <text x="56" y="416" fill="#9EABBF" font-family="Inter, sans-serif" font-size="14">Text  Bild  Galerie</text>
+  <text x="56" y="440" fill="#9EABBF" font-family="Inter, sans-serif" font-size="14">Video  Kontakt  Button</text>
+  <text x="56" y="464" fill="#9EABBF" font-family="Inter, sans-serif" font-size="14">Zitat  Spacer  Divider</text>
+  <text x="56" y="500" fill="#7D889A" font-family="Inter, sans-serif" font-size="13">Drag & Drop auf die Fläche →</text>
+
+  <!-- Center area -->
+  <rect x="320" y="110" width="930" height="846" rx="12" fill="#0F1116" stroke="#2A2F3A"/>
+  <text x="346" y="145" fill="#D5DCE8" font-family="Inter, sans-serif" font-size="19" font-weight="600">Canvas</text>
+
+  <!-- Breakpoint switch -->
+  <rect x="1040" y="124" width="190" height="30" rx="15" fill="#161B24" stroke="#2C3442"/>
+  <circle cx="1070" cy="139" r="10" fill="#8CC63F"/>
+  <text x="1090" y="145" fill="#D6DEEB" font-family="Inter, sans-serif" font-size="13">Desktop / Tablet / Mobile</text>
+
+  <!-- Page canvas sheet -->
+  <rect x="430" y="170" width="700" height="740" rx="14" fill="url(#canvas)" filter="url(#shadow)"/>
+
+  <!-- Hero block -->
+  <rect x="460" y="200" width="640" height="140" rx="12" fill="#FFFFFF" stroke="#D9DEE8"/>
+  <text x="488" y="255" fill="#111318" font-family="Inter, sans-serif" font-size="44" font-weight="700">Impressionen</text>
+  <text x="488" y="292" fill="#4E586A" font-family="Inter, sans-serif" font-size="20">Ein visueller Einstieg in dein Portfolio.</text>
+
+  <!-- 2-column layout block -->
+  <rect x="460" y="360" width="640" height="210" rx="12" fill="#FFFFFF" stroke="#D9DEE8"/>
+  <line x1="780" y1="360" x2="780" y2="570" stroke="#D9DEE8" stroke-width="2"/>
+  <text x="486" y="398" fill="#1C2430" font-family="Inter, sans-serif" font-size="18" font-weight="600">Linke Spalte</text>
+  <text x="486" y="430" fill="#5B667A" font-family="Inter, sans-serif" font-size="16">Text, Bild oder Galerie</text>
+  <text x="806" y="398" fill="#1C2430" font-family="Inter, sans-serif" font-size="18" font-weight="600">Rechte Spalte</text>
+  <text x="806" y="430" fill="#5B667A" font-family="Inter, sans-serif" font-size="16">Kontaktblock oder CTA</text>
+
+  <!-- Contact block -->
+  <rect x="460" y="590" width="640" height="140" rx="12" fill="#FFFFFF" stroke="#D9DEE8"/>
+  <text x="488" y="637" fill="#1C2430" font-family="Inter, sans-serif" font-size="24" font-weight="700">Kontakt</text>
+  <text x="488" y="669" fill="#5B667A" font-family="Inter, sans-serif" font-size="16">mail@example.com · instagram.com/deinprofil</text>
+
+  <!-- Footer preview -->
+  <rect x="460" y="750" width="640" height="120" rx="12" fill="#12161E"/>
+  <text x="488" y="798" fill="#C7D0DE" font-family="Inter, sans-serif" font-size="14">© 2026 MrM</text>
+  <text x="488" y="824" fill="#8FA1BB" font-family="Inter, sans-serif" font-size="14">Designed with the power of AI</text>
+
+  <!-- Right panel: Inspector -->
+  <rect x="1266" y="110" width="310" height="846" rx="12" fill="#0F1116" stroke="#2A2F3A"/>
+  <text x="1288" y="145" fill="#D5DCE8" font-family="Inter, sans-serif" font-size="19" font-weight="600">Inspector</text>
+
+  <rect x="1282" y="165" width="278" height="150" rx="10" fill="#131822" stroke="#2A2F3A"/>
+  <text x="1298" y="194" fill="#E0E7F2" font-family="Inter, sans-serif" font-size="15" font-weight="600">Aktiver Block: 2-Spalten-Layout</text>
+  <text x="1298" y="220" fill="#9FB0C7" font-family="Inter, sans-serif" font-size="13">Layout: 1/2 + 1/2</text>
+  <text x="1298" y="242" fill="#9FB0C7" font-family="Inter, sans-serif" font-size="13">Abstand oben/unten</text>
+  <text x="1298" y="264" fill="#9FB0C7" font-family="Inter, sans-serif" font-size="13">Hintergrund: Standard</text>
+  <text x="1298" y="286" fill="#9FB0C7" font-family="Inter, sans-serif" font-size="13">Sichtbarkeit: Desktop/Tablet/Mobile</text>
+
+  <rect x="1282" y="330" width="278" height="210" rx="10" fill="#131822" stroke="#2A2F3A"/>
+  <text x="1298" y="359" fill="#E0E7F2" font-family="Inter, sans-serif" font-size="15" font-weight="600">Seiten-SEO</text>
+  <text x="1298" y="386" fill="#9FB0C7" font-family="Inter, sans-serif" font-size="13">Meta Title</text>
+  <text x="1298" y="410" fill="#9FB0C7" font-family="Inter, sans-serif" font-size="13">Meta Description</text>
+  <text x="1298" y="434" fill="#9FB0C7" font-family="Inter, sans-serif" font-size="13">Open Graph Bild</text>
+  <text x="1298" y="470" fill="#7F8FA5" font-family="Inter, sans-serif" font-size="12">→ schreibt in Kirby page fields</text>
+
+  <rect x="1282" y="556" width="278" height="190" rx="10" fill="#131822" stroke="#2A2F3A"/>
+  <text x="1298" y="585" fill="#E0E7F2" font-family="Inter, sans-serif" font-size="15" font-weight="600">Sync Status</text>
+  <circle cx="1306" cy="612" r="6" fill="#8CC63F"/>
+  <text x="1320" y="617" fill="#BFD1B0" font-family="Inter, sans-serif" font-size="13">Kirby verbunden</text>
+  <circle cx="1306" cy="638" r="6" fill="#8CC63F"/>
+  <text x="1320" y="643" fill="#BFD1B0" font-family="Inter, sans-serif" font-size="13">Autosave aktiv</text>
+  <circle cx="1306" cy="664" r="6" fill="#8CC63F"/>
+  <text x="1320" y="669" fill="#BFD1B0" font-family="Inter, sans-serif" font-size="13">Preview aktuell</text>
+
+  <text x="42" y="944" fill="#6F7D92" font-family="Inter, sans-serif" font-size="13">Konzept: Canvas UI steuert Kirby-Felder/Layouts im Hintergrund (kein CMS-Wissen nötig).</text>
+</svg>
