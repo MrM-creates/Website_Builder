@@ -1,7 +1,9 @@
 {
-  "name": "website-builder",
+  "name": "flider",
+  "description": "Flider desktop website builder",
+  "author": "Flider",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0-rc2",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
@@ -21,6 +23,8 @@
     "smoke:projects": "bash ./scripts/smoke-project-persistence.sh",
     "desktop:dev": "node ./scripts/desktop-dev-start.mjs",
     "desktop:dev:cli": "electron .",
+    "desktop:build:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --publish never",
+    "desktop:build:dir": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir --publish never",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -33,7 +37,8 @@
     "express": "^5.2.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "ssh2-sftp-client": "^12.0.1"
+    "ssh2-sftp-client": "^12.0.1",
+    "vite": "^7.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
@@ -41,10 +46,37 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react-swc": "^4.2.2",
     "electron": "^40.8.0",
+    "electron-builder": "^26.0.12",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
-    "globals": "^16.5.0",
-    "vite": "^7.3.1"
+    "globals": "^16.5.0"
+  },
+  "build": {
+    "appId": "ch.flider.app",
+    "productName": "Flider",
+    "asar": false,
+    "npmRebuild": false,
+    "nodeGypRebuild": false,
+    "directories": {
+      "buildResources": "build-resources/brand",
+      "output": "release"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "icon": "build-resources/brand/flider.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "artifactName": "Flider-${version}-${arch}.${ext}"
+    }
   }
 }

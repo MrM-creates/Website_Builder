@@ -71,7 +71,11 @@ bash "$ROOT/scripts/dev-bg-stop.sh" >/dev/null || true
 assert_ports_free
 
 : > "$STACK_LOG_FILE"
-node "$ROOT/scripts/dev-bg-spawn.mjs" >/dev/null
+NODE_BIN="${FLIDER_NODE_BIN:-node}"
+if [[ "${FLIDER_ELECTRON_RUN_AS_NODE:-}" == "1" ]]; then
+  export ELECTRON_RUN_AS_NODE=1
+fi
+"$NODE_BIN" "$ROOT/scripts/dev-bg-spawn.mjs" >/dev/null
 
 echo "Waiting for services..."
 all_ok=1

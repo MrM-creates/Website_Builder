@@ -12,15 +12,22 @@ const HEALTH_POLL_MS = 600;
 let mainWindow = null;
 let stackStartedByDesktop = false;
 
-const npmCommand = () => (process.platform === 'win32' ? 'npm.cmd' : 'npm');
+const stackRuntimeEnv = () => {
+  const env = { ...process.env };
+  if (app.isPackaged) {
+    env.FLIDER_NODE_BIN = process.execPath;
+    env.FLIDER_ELECTRON_RUN_AS_NODE = '1';
+  }
+  return env;
+};
 
-const runCommand = (cmd, args, { stdio = 'pipe' } = {}) =>
+const runCommand = (cmd, args, { stdio = 'pipe', env = process.env } = {}) =>
   new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
       cwd: PROJECT_ROOT,
       stdio,
       shell: false,
-      env: process.env
+      env
     });
 
     let stderr = '';
@@ -41,12 +48,12 @@ const runCommand = (cmd, args, { stdio = 'pipe' } = {}) =>
   });
 
 const stopStackDetached = () => {
-  const child = spawn(npmCommand(), ['run', 'dev:bg:stop'], {
+  const child = spawn('bash', [path.join(PROJECT_ROOT, 'scripts', 'dev-bg-stop.sh')], {
     cwd: PROJECT_ROOT,
     detached: true,
     stdio: 'ignore',
     shell: false,
-    env: process.env
+    env: stackRuntimeEnv()
   });
   child.unref();
 };
@@ -95,7 +102,9 @@ const waitForHealthy = async (timeoutMs = BOOT_TIMEOUT_MS) => {
 const ensureStack = async () => {
   if (await isHealthy()) return;
 
-  await runCommand(npmCommand(), ['run', 'dev:bg:ensure']);
+  await runCommand('bash', [path.join(PROJECT_ROOT, 'scripts', 'dev-bg-ensure.sh')], {
+    env: stackRuntimeEnv()
+  });
   const healthy = await waitForHealthy();
   if (!healthy) {
     throw new Error(
@@ -144,7 +153,10 @@ app.on('activate', async () => {
 });
 
 app.on('before-quit', () => {
-  if (stackStartedByDesktop && process.env.FLIDER_DESKTOP_STOP_STACK_ON_QUIT === '1') {
+  if (
+    stackStartedByDesktop &&
+    (process.env.FLIDER_DESKTOP_STOP_STACK_ON_QUIT === '1' || app.isPackaged)
+  ) {
     stopStackDetached();
   }
 });
@@ -161,4 +173,3 @@ app.whenReady().then(async () => {
     app.quit();
   }
 });
-
