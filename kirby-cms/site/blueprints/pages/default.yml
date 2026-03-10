@@ -43,7 +43,7 @@ columns:
                   - video
               flatsite:
                 type: group
-                label: Flatsite
+                label: Flider
                 fieldsets:
                   - button
                   - contactform
@@ -53,4 +53,5 @@ columns:
             size: small
             buttons: false
             maxlength: 160
-            help: Eine kurze Zusammenfassung der Seite (max. 160 Zeichen). Wird in den Google-Suchergebnissen unter dem Titel angezeigt.
+            placeholder: Kurze Zusammenfassung der Seite fuer Suchmaschinen (max. 160 Zeichen)
+            help: Dieser Text ist nicht auf deiner Website sichtbar. Er erscheint nur in Suchmaschinen unter dem Seitentitel. Wenn die Seite genug Inhalt hat und das Feld leer ist, erstellt Flider beim Speichern automatisch einen Vorschlag.

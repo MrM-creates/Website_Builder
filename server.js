@@ -2778,7 +2778,7 @@ const sanitizeProjectSnapshotOnOpen = (projectPath, projectId) => {
 const openProjectByPath = (projectPathInput) => {
     const projectPath = normalizeProjectPath(projectPathInput);
     const manifest = readProjectManifest(projectPath, { migrate: true });
-    if (!manifest) throw new Error('In diesem Ordner wurde kein Flatsite-Projekt gefunden');
+    if (!manifest) throw new Error('In diesem Ordner wurde kein Flider-Projekt gefunden');
 
     let state = readJsonFileOrNull(projectStatePath(projectPath)) || {};
     const snapshotPages = sanitizeProjectSnapshotOnOpen(projectPath, manifest.id);
