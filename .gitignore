@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 .runtime/
 .flatsite/
+
+# Kirby runtime content is project-specific and should not be committed
+kirby-cms/content/**
+!kirby-cms/content/.gitkeep

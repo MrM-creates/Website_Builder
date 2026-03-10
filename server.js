@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { Client } from 'basic-ftp';
 import SftpClient from 'ssh2-sftp-client';
-import { exec } from 'child_process';
+import { exec, execFileSync } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -18,16 +18,15 @@ const PORT = 3001;
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 
-const DEFAULT_ADMIN_EMAIL = 'admin@flatsite.app';
-const DEFAULT_ADMIN_PASSWORD = 'flatsite2026';
+const DEFAULT_ADMIN_EMAIL = 'admin@flider.local';
 const DEFAULT_ADMIN_NAME = 'Flatsite Admin';
 const DEFAULT_ADMIN_LANGUAGE = 'de';
 const DEFAULT_ADMIN_ROLE = 'admin';
-const DEFAULT_ADMIN_BCRYPT = '$2y$12$KtDqJZUN.tjtrv9dktoYS.4F6PYxZtEvM0t3rxGzEfjQGg5ln0lBK';
 const FLATSITE_DIR = path.join(__dirname, '.flatsite');
 const STORAGE_CONFIG_FILE = path.join(FLATSITE_DIR, 'config.json');
 const ACTIVE_PROJECT_FILE = path.join(FLATSITE_DIR, 'active-project.json');
 const REPAIR_LOG_FILE = path.join(FLATSITE_DIR, 'repair-events.log');
+const ADMIN_CREDENTIALS_FILE = path.join(FLATSITE_DIR, 'admin-credentials.json');
 const PROJECT_RECOVERY_DIR_NAME = '_recovery';
 const LIVE_CONTENT_DIR = path.join(__dirname, 'kirby-cms', 'content');
 const LIVE_CUSTOM_CSS_PATH = path.join(__dirname, 'kirby-cms', 'assets', 'css', 'custom.css');
@@ -36,6 +35,78 @@ const LIVE_UPLOADS_DIR = path.join(__dirname, 'kirby-cms', 'assets', 'uploads');
 const parseField = (content, key) => {
     const match = content.match(new RegExp(`^${key}:\\s*(.+)$`, 'mi'));
     return match?.[1]?.trim() || null;
+};
+
+const normalizeEmail = (value = '') => String(value || '').trim().toLowerCase();
+
+const isLikelyEmail = (value = '') =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
+
+const generateAdminPassword = () => {
+    if (typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID().replace(/-/g, '');
+    }
+    return crypto.randomBytes(16).toString('hex');
+};
+
+const generateBcryptHashWithPhp = (password = '') => {
+    const safe = String(password || '')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'");
+    const phpScript = `echo password_hash('${safe}', PASSWORD_BCRYPT), PHP_EOL;`;
+    const output = execFileSync('php', ['-r', phpScript], { encoding: 'utf-8' }).trim();
+    if (!/^\$2[abyx]\$/i.test(output)) {
+        throw new Error('PHP hat keinen gueltigen bcrypt-Hash erzeugt');
+    }
+    return output;
+};
+
+const readPersistedAdminCredentials = () => {
+    if (!fs.existsSync(ADMIN_CREDENTIALS_FILE)) return null;
+    try {
+        const parsed = JSON.parse(fs.readFileSync(ADMIN_CREDENTIALS_FILE, 'utf-8'));
+        const email = normalizeEmail(parsed?.email);
+        const password = String(parsed?.password || '').trim();
+        const passwordHash = String(parsed?.passwordHash || '').trim();
+
+        if (!isLikelyEmail(email) || !password || !/^\$2[abyx]\$/i.test(passwordHash)) {
+            return null;
+        }
+
+        return { email, password, passwordHash };
+    } catch {
+        return null;
+    }
+};
+
+const persistAdminCredentials = ({ email, password, passwordHash }) => {
+    fs.mkdirSync(FLATSITE_DIR, { recursive: true });
+    fs.writeFileSync(
+        ADMIN_CREDENTIALS_FILE,
+        JSON.stringify(
+            {
+                email: normalizeEmail(email) || DEFAULT_ADMIN_EMAIL,
+                password: String(password || ''),
+                passwordHash: String(passwordHash || ''),
+                updatedAt: new Date().toISOString()
+            },
+            null,
+            2
+        ),
+        'utf-8'
+    );
+};
+
+const getOrCreateAdminCredentials = ({ preferredEmail = '' } = {}) => {
+    const existing = readPersistedAdminCredentials();
+    if (existing) return existing;
+
+    const email = isLikelyEmail(preferredEmail) ? normalizeEmail(preferredEmail) : DEFAULT_ADMIN_EMAIL;
+    const password = generateAdminPassword();
+    const passwordHash = generateBcryptHashWithPhp(password);
+    const credentials = { email, password, passwordHash };
+    persistAdminCredentials(credentials);
+    return credentials;
 };
 
 const parseUserTxt = (content) => ({
@@ -148,27 +219,35 @@ const findAdminAccount = (accountsDir) => {
     return null;
 };
 
-const ensureAdminAccount = (accountsDir, { email = DEFAULT_ADMIN_EMAIL, password = DEFAULT_ADMIN_PASSWORD } = {}) => {
+const ensureAdminAccount = (accountsDir, { email = '' } = {}) => {
     fs.mkdirSync(accountsDir, { recursive: true });
+    const credentials = getOrCreateAdminCredentials({ preferredEmail: email });
 
     const admin = findAdminAccount(accountsDir);
     const accountId = admin?.id || crypto.randomBytes(4).toString('hex');
     const accountDir = path.join(accountsDir, accountId);
 
     const accountData = {
-        email: admin?.email || email,
+        email: admin?.email || credentials.email,
         name: admin?.name || DEFAULT_ADMIN_NAME,
         language: admin?.language || DEFAULT_ADMIN_LANGUAGE,
         role: DEFAULT_ADMIN_ROLE,
-        passwordHash: DEFAULT_ADMIN_BCRYPT
+        passwordHash: credentials.passwordHash
     };
 
     ensureAdminAccountFiles(accountDir, accountData);
+    if (accountData.email !== credentials.email) {
+        persistAdminCredentials({
+            email: accountData.email,
+            password: credentials.password,
+            passwordHash: credentials.passwordHash
+        });
+    }
 
     return {
         id: accountId,
         email: accountData.email,
-        password
+        password: credentials.password
     };
 };
 
@@ -281,6 +360,138 @@ const readSiteMetaFromContent = (contentDir) => {
         footerLine2: normalizeSingleLineFieldValue(fields.Footerline2 || ''),
         footerLine3: normalizeSingleLineFieldValue(fields.Footerline3 || '')
     };
+};
+
+const decodeHtmlEntitiesForText = (value = '') =>
+    String(value ?? '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;|&apos;/gi, "'")
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&#x2f;|&#47;/gi, '/');
+
+const sanitizeTextSnippet = (value = '') =>
+    decodeHtmlEntitiesForText(String(value ?? ''))
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+const trimSeoDescription = (value = '', maxChars = 160) => {
+    const normalized = sanitizeTextSnippet(value);
+    if (!normalized) return '';
+    if (normalized.length <= maxChars) return normalized;
+
+    const hardCut = normalized.slice(0, maxChars);
+    const breakPoint = hardCut.lastIndexOf(' ');
+    const trimmed = breakPoint > 70 ? hardCut.slice(0, breakPoint) : hardCut;
+    return trimmed.trim();
+};
+
+const resolvePageDefaultFileBySlug = (contentRoot, slugInput = '') => {
+    const slug = sanitizeSlug(slugInput);
+    if (!slug) return '';
+
+    const dirName = findExistingPageDirName(contentRoot, slug);
+    if (!dirName) return '';
+
+    const filePath = path.join(contentRoot, dirName, 'default.txt');
+    if (!fs.existsSync(filePath)) return '';
+
+    return filePath;
+};
+
+const extractSeoRelevantSnippetsFromLayout = (layoutRaw = '') => {
+    const raw = String(layoutRaw ?? '').trim();
+    if (!raw) return [];
+
+    let parsed = [];
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        return [];
+    }
+
+    const snippets = [];
+    const allowedKeys = new Set([
+        'text',
+        'title',
+        'caption',
+        'description',
+        'headline',
+        'subheadline',
+        'alt',
+        'label',
+        'name'
+    ]);
+
+    const pushSnippet = (value) => {
+        const cleaned = sanitizeTextSnippet(value);
+        if (!cleaned) return;
+        if (cleaned.length < 3) return;
+        if (/^[0-9a-f-]{8,}$/i.test(cleaned)) return;
+        snippets.push(cleaned);
+    };
+
+    const walkValue = (value, keyHint = '') => {
+        if (value === null || value === undefined) return;
+
+        if (typeof value === 'string') {
+            if (!keyHint || allowedKeys.has(String(keyHint).toLowerCase())) {
+                pushSnippet(value);
+            }
+            return;
+        }
+
+        if (Array.isArray(value)) {
+            value.forEach((item) => walkValue(item, keyHint));
+            return;
+        }
+
+        if (typeof value === 'object') {
+            Object.entries(value).forEach(([key, nested]) => {
+                walkValue(nested, key);
+            });
+        }
+    };
+
+    walkValue(parsed, '');
+
+    // Keep deterministic order and avoid noisy duplicates.
+    const unique = [];
+    const seen = new Set();
+    for (const snippet of snippets) {
+        const normalized = snippet.toLowerCase();
+        if (seen.has(normalized)) continue;
+        seen.add(normalized);
+        unique.push(snippet);
+        if (unique.length >= 8) break;
+    }
+
+    return unique;
+};
+
+const buildSeoDescriptionSuggestion = ({ pageTitle = '', layoutRaw = '', projectName = '' } = {}) => {
+    const title = normalizeSingleLineFieldValue(pageTitle || '') || 'Diese Seite';
+    const snippets = extractSeoRelevantSnippetsFromLayout(layoutRaw);
+
+    let draft = '';
+    if (snippets.length > 0) {
+        draft = `${title}: ${snippets.join(' ')}`;
+    } else {
+        const safeProject = normalizeSingleLineFieldValue(projectName || '');
+        draft = safeProject
+            ? `${title} auf ${safeProject} entdecken.`
+            : `${title} entdecken.`;
+    }
+
+    const trimmed = trimSeoDescription(draft, 160);
+    if (!trimmed) {
+        return trimSeoDescription(`${title} entdecken.`, 160);
+    }
+
+    return trimmed;
 };
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -3491,11 +3702,90 @@ app.get('/api/site-meta', (req, res) => {
     }
 });
 
+app.post('/api/seo/suggest', express.json(), (req, res) => {
+    const { pageId = '', projectName = '' } = req.body ?? {};
+    const slug = sanitizeSlug(pageId);
+    if (!slug) {
+        return res.status(400).json({ error: 'Ungültige Seite' });
+    }
+
+    try {
+        const contentRoot = path.join(__dirname, 'kirby-cms', 'content');
+        const txtFilePath = resolvePageDefaultFileBySlug(contentRoot, slug);
+        if (!txtFilePath) {
+            return res.status(404).json({ error: 'Seiteninhalt nicht gefunden' });
+        }
+
+        const raw = fs.readFileSync(txtFilePath, 'utf-8');
+        const fields = parseSingleLineKirbyFields(raw);
+        const pageTitle = normalizeSingleLineFieldValue(fields.Title || humanizeSlug(slug));
+        const layoutRaw = String(fields.Layout || '');
+        const suggestion = buildSeoDescriptionSuggestion({
+            pageTitle,
+            layoutRaw,
+            projectName: normalizeSingleLineFieldValue(projectName || '')
+        });
+
+        res.json({
+            success: true,
+            pageId: slug,
+            pageTitle,
+            suggestion
+        });
+    } catch (err) {
+        console.error('Fehler beim Erzeugen der SEO-Beschreibung:', err);
+        res.status(500).json({ error: 'SEO-Vorschlag konnte nicht erstellt werden' });
+    }
+});
+
+app.post('/api/seo/update', express.json(), (req, res) => {
+    const { pageId = '', description = '' } = req.body ?? {};
+    const slug = sanitizeSlug(pageId);
+    if (!slug) {
+        return res.status(400).json({ error: 'Ungültige Seite' });
+    }
+
+    const normalizedDescription = trimSeoDescription(description, 160);
+    if (!normalizedDescription) {
+        return res.status(400).json({ error: 'Beschreibung fehlt' });
+    }
+
+    try {
+        const contentRoot = path.join(__dirname, 'kirby-cms', 'content');
+        const txtFilePath = resolvePageDefaultFileBySlug(contentRoot, slug);
+        if (!txtFilePath) {
+            return res.status(404).json({ error: 'Seiteninhalt nicht gefunden' });
+        }
+
+        const current = fs.readFileSync(txtFilePath, 'utf-8');
+        const fields = parseSingleLineKirbyFields(current);
+        const merged = {
+            ...fields,
+            Title: normalizeSingleLineFieldValue(fields.Title || humanizeSlug(slug)),
+            Seodesc: normalizedDescription
+        };
+
+        const orderedKeys = ['Title', 'Layout', 'Seodesc', 'Uuid'];
+        const restKeys = Object.keys(merged).filter((key) => !orderedKeys.includes(key)).sort();
+        const allKeys = [...orderedKeys, ...restKeys];
+        const updated = stringifyKirbyFields(allKeys.map((key) => [key, merged[key]]));
+        fs.writeFileSync(txtFilePath, updated, 'utf-8');
+
+        res.json({
+            success: true,
+            pageId: slug,
+            description: normalizedDescription
+        });
+    } catch (err) {
+        console.error('Fehler beim Speichern der SEO-Beschreibung:', err);
+        res.status(500).json({ error: 'SEO-Beschreibung konnte nicht gespeichert werden' });
+    }
+});
+
 const LOGO_MIME_TO_EXT = {
     'image/png': 'png',
     'image/jpeg': 'jpg',
     'image/webp': 'webp',
-    'image/gif': 'gif',
     'image/svg+xml': 'svg'
 };
 
@@ -3523,7 +3813,7 @@ const extractImagePayloadFromDataUrl = (dataUrl = '') => {
 
 const deriveLogoExtension = (filename = '', fallbackExt = 'png') => {
     const fileExt = String(path.extname(String(filename || '') || '').replace('.', '')).toLowerCase();
-    if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(fileExt)) {
+    if (['png', 'jpg', 'jpeg', 'webp', 'svg'].includes(fileExt)) {
         return fileExt === 'jpeg' ? 'jpg' : fileExt;
     }
     return fallbackExt;
@@ -3531,12 +3821,12 @@ const deriveLogoExtension = (filename = '', fallbackExt = 'png') => {
 
 app.post('/api/upload-site-logo', (req, res) => {
     const { filename = '', dataUrl = '' } = req.body ?? {};
-    const maxBytes = 12 * 1024 * 1024;
+    const maxBytes = 5 * 1024 * 1024;
 
     try {
         const { extFromMime, buffer } = extractImagePayloadFromDataUrl(dataUrl);
         if (buffer.length > maxBytes) {
-            return res.status(400).json({ error: 'Logo ist zu groß (max. 12 MB)' });
+            return res.status(400).json({ error: 'Logo ist zu gross (max. 5 MB)' });
         }
 
         const ext = deriveLogoExtension(filename, extFromMime);
@@ -3558,7 +3848,7 @@ app.post('/api/upload-site-logo', (req, res) => {
         });
     } catch (err) {
         const message = String(err?.message || 'Logo konnte nicht gespeichert werden');
-        const status = /zu groß|format|unterstützt|leer/i.test(message) ? 400 : 500;
+        const status = /zu gross|format|unterstützt|leer/i.test(message) ? 400 : 500;
         res.status(status).json({ error: message });
     }
 });
@@ -3685,11 +3975,11 @@ app.get('/api/content-pages', (req, res) => {
 
 // ENDPOINT: ENSURE KIRBY ACCOUNT EXISTS (Invisible to the user)
 app.post('/api/ensure-account', (req, res) => {
-    const { email = DEFAULT_ADMIN_EMAIL, password = DEFAULT_ADMIN_PASSWORD } = req.body ?? {};
+    const { email = '' } = req.body ?? {};
     const accountsDir = path.join(__dirname, 'kirby-cms', 'site', 'accounts');
 
     try {
-        const account = ensureAdminAccount(accountsDir, { email, password });
+        const account = ensureAdminAccount(accountsDir, { email });
         console.log(`Kirby Admin-Account bereit: ${account.email} (${account.id})`);
         res.json({ success: true, message: 'Account ist bereit', accountId: account.id, email: account.email });
 
@@ -3704,10 +3994,7 @@ app.post('/api/ensure-account', (req, res) => {
 app.post('/api/auto-login', async (req, res) => {
     try {
         const accountsDir = path.join(__dirname, 'kirby-cms', 'site', 'accounts');
-        const account = ensureAdminAccount(accountsDir, {
-            email: DEFAULT_ADMIN_EMAIL,
-            password: DEFAULT_ADMIN_PASSWORD
-        });
+        const account = ensureAdminAccount(accountsDir, {});
 
         const loginResponse = await fetch('http://127.0.0.1:8000/api/auth/login', {
             method: 'POST',

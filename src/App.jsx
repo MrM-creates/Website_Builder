@@ -133,13 +133,13 @@ const DEFAULT_PAGES = [
 ];
 
 const TEST_HOSTING_DEFAULTS = {
-  hostingProvider: 'hostpoint',
+  hostingProvider: 'other',
   connectionType: 'ftpes',
-  ftpServer: 'sl91.web.hostpoint.ch',
-  ftpUser: 'testuser@egakinup.myhostpoint.ch',
+  ftpServer: '',
+  ftpUser: '',
   ftpPassword: '',
   ftpPort: '21',
-  websiteUrl: 'https://swiss-ai-community.ch',
+  websiteUrl: '',
   targetPath: '/',
 };
 
@@ -342,7 +342,13 @@ function App() {
   const BACKEND_URL = 'http://127.0.0.1:3001';
   const BRAND_NAME = 'Flider.';
   const BRAND_WORDMARK_DARK = '/brand/flider_wordmark_dark.svg?v=3';
-  const SITE_LOGO_MAX_MB = 12;
+  const SITE_LOGO_MAX_MB = 5;
+  const SITE_LOGO_ALLOWED_TYPES = new Set([
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'image/svg+xml',
+  ]);
 
   /* ---- State ---- */
   const [step, setStep] = useState('welcome');
@@ -1131,12 +1137,13 @@ function App() {
 
     const maxBytes = SITE_LOGO_MAX_MB * 1024 * 1024;
     if (file.size > maxBytes) {
-      setSiteLogoError(`Logo ist zu groß (max. ${SITE_LOGO_MAX_MB} MB).`);
+      setSiteLogoError(`Logo ist zu gross (max. ${SITE_LOGO_MAX_MB} MB).`);
       return;
     }
 
-    if (!String(file.type || '').toLowerCase().startsWith('image/')) {
-      setSiteLogoError('Bitte eine Bilddatei wählen (PNG, JPG, WEBP, SVG oder GIF).');
+    const normalizedType = String(file.type || '').toLowerCase();
+    if (!SITE_LOGO_ALLOWED_TYPES.has(normalizedType)) {
+      setSiteLogoError('Bitte ein Logo als PNG, JPG, WEBP oder SVG hochladen.');
       return;
     }
 
@@ -1454,7 +1461,7 @@ function App() {
       await fetch(`${BACKEND_URL}/api/ensure-account`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'admin@flatsite.app', password: 'flatsite2026' }),
+        body: JSON.stringify({}),
       });
     }
 
@@ -2065,7 +2072,7 @@ function App() {
                       }}
                       disabled={isOpeningProject}
                     >
-                      Schließen
+                      Schliessen
                     </button>
                   </div>
                   <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
@@ -2161,7 +2168,7 @@ function App() {
         {/* ====== STEP: PROJECT NAME ====== */}
         {step === 'config' && (
           <div className="glass-panel fade-in" style={{ maxWidth: '600px', width: '100%', padding: '3rem', borderRadius: '12px' }}>
-            <h2 style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>Wie soll deine Website heißen?</h2>
+            <h2 style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>Wie soll deine Website heissen?</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>Dieser Name erscheint auch oben als dein Logo auf der Website.</p>
             <div className="input-group">
               <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Website-Name</label>
@@ -2186,7 +2193,7 @@ function App() {
                   {isUploadingSiteLogo ? 'Logo wird hochgeladen…' : 'Logo auswählen'}
                   <input
                     type="file"
-                    accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
                     onChange={handleSiteLogoUpload}
                     disabled={isUploadingSiteLogo}
                     style={{ display: 'none' }}
@@ -2205,7 +2212,8 @@ function App() {
                 )}
               </div>
               <p style={{ marginTop: '0.45rem', marginBottom: 0, color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
-                Falls gesetzt, wird das Bild statt des Text-Logos auf der Website angezeigt.
+                Empfohlen: PNG/SVG mit transparentem Hintergrund, max. {SITE_LOGO_MAX_MB} MB.
+                Wenn gesetzt, wird das Bild statt des Text-Logos auf der Website angezeigt.
               </p>
               {siteLogoError && (
                 <p style={{ marginTop: '0.45rem', marginBottom: 0, color: '#ff8080', fontSize: '0.8rem' }}>{siteLogoError}</p>
@@ -2471,7 +2479,7 @@ function App() {
               onClick={() => setShowProviderGuide(true)}
             >
               <HelpBadgeIcon label="Provider-Hilfe" />
-              Du weißt nicht, wo du diese Daten findest?
+              Du weisst nicht, wo du diese Daten findest?
             </button>
 
             <div className="input-group" style={{ marginBottom: '1rem' }}>
@@ -2658,7 +2666,7 @@ function App() {
                 )}
               </div>
 
-              {/* Footer block in editor context */}
+              {/* Footer block in site overview context */}
               {showFooterPanelInEditor && (
                 <aside style={{
                   width: '320px',
@@ -2711,6 +2719,7 @@ function App() {
                   </div>
                 </aside>
               )}
+
             </div>
           </div>
         )}
@@ -2730,7 +2739,7 @@ function App() {
               onClick={() => setShowProviderGuide(true)}
             >
               <HelpBadgeIcon label="Provider-Hilfe" />
-              Du weißt nicht, wo du diese Daten findest?
+              Du weisst nicht, wo du diese Daten findest?
             </button>
 
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
@@ -2934,7 +2943,7 @@ function App() {
                 style={{ padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
                 onClick={() => setShowProviderGuide(false)}
               >
-                Schließen
+                Schliessen
               </button>
             </div>
             <p style={{ margin: '0 0 0.85rem 0', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
