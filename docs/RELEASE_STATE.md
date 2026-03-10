@@ -1,11 +1,13 @@
 # Flider Release State (Production Baseline)
 
-Date: 2026-03-09
+Date: 2026-03-10
 Branch: `codex/pages-ftp-fixes-2026-03-04`
+Freeze Commit: `a52e13a`
 
 ## Scope Frozen for Deployment
 
 This baseline is the stable production candidate. No experimental editor features are active in the UI.
+Only bugfixes are allowed from this point until release sign-off.
 
 ## Included in this release
 
@@ -37,3 +39,9 @@ This baseline is the stable production candidate. No experimental editor feature
 
 - Canvas concept asset is kept for planning only: `docs/mockups/canvas-editor-mockup.svg`.
 - Production branch should remain feature-frozen until deployment is signed off.
+
+## Gate Status (2026-03-10)
+
+- `npm run build` passed
+- `npm run smoke:projects` passed
+- Manual checks passed: App↔Editor sync, local preview, live publish, website open
