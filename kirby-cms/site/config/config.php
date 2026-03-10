@@ -5,7 +5,8 @@ return [
     'panel' => [
         'install' => false,
         'frame' => true,
-        'css' => 'assets/css/panel.css'
+        'css' => 'assets/css/panel.css',
+        'js' => 'assets/js/panel.js'
     ],
     'api' => [
         'csrf' => false

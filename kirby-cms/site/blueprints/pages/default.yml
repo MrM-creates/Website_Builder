@@ -54,4 +54,4 @@ columns:
             buttons: false
             maxlength: 160
             placeholder: Kurze Zusammenfassung der Seite fuer Suchmaschinen (max. 160 Zeichen)
-            help: Dieser Text ist nicht auf deiner Website sichtbar. Er erscheint nur in Suchmaschinen unter dem Seitentitel. Wenn die Seite genug Inhalt hat und das Feld leer ist, erstellt Flider beim Speichern automatisch einen Vorschlag.
+            help: Dieser Text ist nicht auf deiner Website sichtbar. Er erscheint nur in Suchmaschinen unter dem Seitentitel. Mit "Vorschlag generieren" erstellt Flider einen Vorschlag aus dem Seiteninhalt (nur wenn genug Inhalt vorhanden ist).
