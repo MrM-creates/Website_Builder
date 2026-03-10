@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SRC_SVG="$ROOT/public/brand/flider_icon_dark.svg"
+SRC_SVG="$ROOT/public/brand/flider_app_icon.svg"
+FAVICON_SRC="$ROOT/public/brand/flider_icon_dark.svg"
 FAVICON_SVG="$ROOT/public/favicon.svg"
 OUT_DIR="$ROOT/build-resources/brand"
 TMP_DIR="$ROOT/.runtime/tmp/brand-icons"
@@ -29,11 +30,16 @@ if [[ ! -f "$SRC_SVG" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$FAVICON_SRC" ]]; then
+  echo "Favicon-SVG nicht gefunden: $FAVICON_SRC"
+  exit 1
+fi
+
 mkdir -p "$OUT_DIR" "$TMP_DIR"
 rm -rf "$ICONSET_DIR"
 mkdir -p "$ICONSET_DIR"
 
-cp "$SRC_SVG" "$FAVICON_SVG"
+cp "$FAVICON_SRC" "$FAVICON_SVG"
 
 qlmanage -t -s 1024 -o "$TMP_DIR" "$SRC_SVG" >/dev/null 2>&1 || {
   echo "SVG->PNG Rendering via qlmanage fehlgeschlagen."

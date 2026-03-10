@@ -1,0 +1,16 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1024" height="1024" fill="#111111"/>
+  <text
+    x="270"
+    y="675"
+    fill="white"
+    font-family="'Space Mono', monospace"
+    font-size="500"
+    font-weight="400"
+    letter-spacing="-8"
+    text-rendering="geometricPrecision">
+    F
+  </text>
+  <circle cx="700" cy="628" r="38" fill="white"/>
+</svg>
+
