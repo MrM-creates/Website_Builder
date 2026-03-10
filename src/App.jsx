@@ -651,7 +651,7 @@ function App() {
       setProjects(listed);
 
       const active = listed.find((project) => project.isActive);
-      if (active?.id) {
+      if (active?.id && step === 'welcome' && !isOpeningProject && !currentProjectId && !currentProjectPath) {
         setCurrentProjectId(active.id);
         setCurrentProjectPath(String(active.path || ''));
       }
@@ -706,7 +706,7 @@ function App() {
   const runProjectSave = async (projectIdOverride = '', projectPathOverride = '', stateOverride = null) => {
     const projectId = projectIdOverride || currentProjectId;
     const projectPath = String(projectPathOverride || currentProjectPath || '').trim();
-    if (!projectId && !projectPath) return;
+    if (!projectId || !projectPath) return;
 
     const res = await fetch(`${BACKEND_URL}/api/projects/save`, {
       method: 'POST',

@@ -2498,6 +2498,25 @@ const touchProjectInHistory = (manifest) => {
 };
 
 const projectLocks = new Map();
+let liveContentLockTail = Promise.resolve();
+
+const withLiveContentLock = (task) => {
+    const previous = liveContentLockTail;
+
+    let releaseCurrent;
+    const currentGate = new Promise((resolve) => {
+        releaseCurrent = resolve;
+    });
+
+    liveContentLockTail = previous.catch(() => {}).then(() => currentGate);
+
+    return previous
+        .catch(() => {})
+        .then(() => task())
+        .finally(() => {
+            releaseCurrent();
+        });
+};
 
 const withProjectLock = (projectPath, task) => {
     const key = normalizeProjectPath(projectPath);
@@ -2663,7 +2682,6 @@ const saveProjectAtPath = (projectPathInput, statePayload = {}) => {
     writeJsonFile(projectStatePath(projectPath, { forWrite: true }), stateWithoutPages);
     snapshotLiveProjectToStore(projectPath);
     touchProjectInHistory(manifest);
-    setActiveProjectRef({ projectPath, projectId: manifest.id });
 
     return manifest;
 };
@@ -3216,7 +3234,10 @@ app.post('/api/projects/create', express.json(), async (req, res) => {
     try {
         const projectPath = normalizeProjectPath(req.body?.projectPath || '');
         const state = req.body?.state || {};
-        const project = await withProjectLock(projectPath, () => saveProjectAtPath(projectPath, state));
+        const project = await withProjectLock(projectPath, () =>
+            withLiveContentLock(() => saveProjectAtPath(projectPath, state))
+        );
+        setActiveProjectRef({ projectPath: project.path, projectId: project.id });
         res.json({ success: true, project });
     } catch (err) {
         console.error('Fehler beim Erstellen des Projekts:', err);
@@ -3226,12 +3247,45 @@ app.post('/api/projects/create', express.json(), async (req, res) => {
 
 app.post('/api/projects/save', express.json(), async (req, res) => {
     try {
-        const projectPath = resolveProjectPathFromRequest({
-            projectId: req.body?.projectId,
-            projectPath: req.body?.projectPath
-        });
+        const requestedId = normalizeProjectId(req.body?.projectId);
+        const requestedPathInput = String(req.body?.projectPath || '').trim();
+        if (!requestedId || !requestedPathInput) {
+            return res.status(400).json({
+                success: false,
+                error: 'Speichern erfordert projectId und projectPath'
+            });
+        }
+
+        const projectPath = normalizeProjectPath(requestedPathInput);
+        const resolvedPathById = findProjectPathById(requestedId);
+        if (!resolvedPathById) {
+            return res.status(404).json({
+                success: false,
+                error: 'Projekt-ID konnte nicht aufgeloest werden'
+            });
+        }
+        if (resolvedPathById !== projectPath) {
+            return res.status(409).json({
+                success: false,
+                error: 'Projektkontext-Konflikt (ID/Pfad)'
+            });
+        }
+
+        const activeRef = getActiveProjectRef();
+        const activeId = normalizeProjectId(activeRef.projectId);
+        const activePath = activeRef.projectPath ? normalizeProjectPath(activeRef.projectPath) : '';
+
+        if ((activeId && activeId !== requestedId) || (activePath && activePath !== projectPath)) {
+            return res.status(409).json({
+                success: false,
+                error: 'Projektkontext hat gewechselt. Bitte Projekt neu oeffnen.'
+            });
+        }
+
         const state = req.body?.state || {};
-        const project = await withProjectLock(projectPath, () => saveProjectAtPath(projectPath, state));
+        const project = await withProjectLock(projectPath, () =>
+            withLiveContentLock(() => saveProjectAtPath(projectPath, state))
+        );
         res.json({ success: true, project });
     } catch (err) {
         console.error('Fehler beim Speichern des Projekts:', err);
@@ -3245,7 +3299,9 @@ app.post('/api/projects/open', express.json(), async (req, res) => {
             projectId: req.body?.projectId,
             projectPath: req.body?.projectPath
         });
-        const project = await withProjectLock(projectPath, () => openProjectByPath(projectPath));
+        const project = await withProjectLock(projectPath, () =>
+            withLiveContentLock(() => openProjectByPath(projectPath))
+        );
         res.json({ success: true, project });
     } catch (err) {
         console.error('Fehler beim Oeffnen des Projekts:', err);
@@ -3263,7 +3319,9 @@ app.get('/api/projects/current', async (req, res) => {
         if (!activePath) {
             return res.json({ success: true, project: null });
         }
-        const project = await withProjectLock(activePath, () => openProjectByPath(activePath));
+        const project = await withProjectLock(activePath, () =>
+            withLiveContentLock(() => openProjectByPath(activePath))
+        );
         res.json({ success: true, project });
     } catch {
         res.json({ success: true, project: null });
@@ -3363,7 +3421,7 @@ app.post('/api/deploy', async (req, res) => {
             });
             const activeProject = await withProjectLock(
                 activeProjectPath,
-                () => openProjectByPath(activeProjectPath)
+                () => withLiveContentLock(() => openProjectByPath(activeProjectPath))
             );
             activeProjectId = normalizeProjectId(activeProject?.id);
             activeProjectName = String(activeProject?.name || '').trim();
@@ -3373,22 +3431,24 @@ app.post('/api/deploy', async (req, res) => {
             );
         }
 
-        updateSiteMetaInContent(path.join(kirbyRoot, 'content'), {
-            title: siteTitle,
-            footerLine1,
-            footerLine2,
-            footerLine3
-        });
-        if (activeProjectPath) {
-            await withProjectLock(activeProjectPath, () => {
-                snapshotLiveProjectToStore(activeProjectPath);
+        const staticExport = await withLiveContentLock(async () => {
+            updateSiteMetaInContent(path.join(kirbyRoot, 'content'), {
+                title: siteTitle,
+                footerLine1,
+                footerLine2,
+                footerLine3
             });
-        }
+            if (activeProjectPath) {
+                await withProjectLock(activeProjectPath, () => {
+                    snapshotLiveProjectToStore(activeProjectPath);
+                });
+            }
 
-        const staticExport = await buildStaticDeploySource({
-            kirbyRoot,
-            websiteUrl: normalizedWebsiteUrl,
-            targetPath: normalizedTargetPath
+            return buildStaticDeploySource({
+                kirbyRoot,
+                websiteUrl: normalizedWebsiteUrl,
+                targetPath: normalizedTargetPath
+            });
         });
         sourceFolder = staticExport.sourceFolder;
         assetReport = staticExport.assetReport || assetReport;
@@ -3703,12 +3763,14 @@ app.post('/api/update-theme', (req, res) => {
 });
 
 // ENDPOINT: UPDATE SITE TITLE
-app.post('/api/update-site-title', (req, res) => {
+app.post('/api/update-site-title', async (req, res) => {
     const { title } = req.body ?? {};
     const contentDir = LIVE_CONTENT_DIR;
 
     try {
-        updateSiteTitleInContent(contentDir, title);
+        await withLiveContentLock(() => {
+            updateSiteTitleInContent(contentDir, title);
+        });
         res.json({ success: true });
     } catch (err) {
         console.error('Fehler beim Aktualisieren des Site-Titels:', err);
@@ -3717,12 +3779,14 @@ app.post('/api/update-site-title', (req, res) => {
 });
 
 // ENDPOINT: UPDATE SITE META (title + footer fields from Flatsite UI)
-app.post('/api/update-site-meta', (req, res) => {
+app.post('/api/update-site-meta', async (req, res) => {
     const { title, siteLogoUrl, footerLine1 = '', footerLine2 = '', footerLine3 = '' } = req.body ?? {};
     const contentDir = LIVE_CONTENT_DIR;
 
     try {
-        updateSiteMetaInContent(contentDir, { title, siteLogoUrl, footerLine1, footerLine2, footerLine3 });
+        await withLiveContentLock(() => {
+            updateSiteMetaInContent(contentDir, { title, siteLogoUrl, footerLine1, footerLine2, footerLine3 });
+        });
         res.json({ success: true });
     } catch (err) {
         console.error('Fehler beim Aktualisieren der Site-Metadaten:', err);
@@ -3777,7 +3841,7 @@ app.post('/api/seo/suggest', express.json(), (req, res) => {
     }
 });
 
-app.post('/api/seo/update', express.json(), (req, res) => {
+app.post('/api/seo/update', express.json(), async (req, res) => {
     const { pageId = '', description = '' } = req.body ?? {};
     const slug = sanitizeSlug(pageId);
     if (!slug) {
@@ -3796,19 +3860,21 @@ app.post('/api/seo/update', express.json(), (req, res) => {
             return res.status(404).json({ error: 'Seiteninhalt nicht gefunden' });
         }
 
-        const current = fs.readFileSync(txtFilePath, 'utf-8');
-        const fields = parseSingleLineKirbyFields(current);
-        const merged = {
-            ...fields,
-            Title: normalizeSingleLineFieldValue(fields.Title || humanizeSlug(slug)),
-            Seodesc: normalizedDescription
-        };
+        await withLiveContentLock(() => {
+            const current = fs.readFileSync(txtFilePath, 'utf-8');
+            const fields = parseSingleLineKirbyFields(current);
+            const merged = {
+                ...fields,
+                Title: normalizeSingleLineFieldValue(fields.Title || humanizeSlug(slug)),
+                Seodesc: normalizedDescription
+            };
 
-        const orderedKeys = ['Title', 'Layout', 'Seodesc', 'Uuid'];
-        const restKeys = Object.keys(merged).filter((key) => !orderedKeys.includes(key)).sort();
-        const allKeys = [...orderedKeys, ...restKeys];
-        const updated = stringifyKirbyFields(allKeys.map((key) => [key, merged[key]]));
-        fs.writeFileSync(txtFilePath, updated, 'utf-8');
+            const orderedKeys = ['Title', 'Layout', 'Seodesc', 'Uuid'];
+            const restKeys = Object.keys(merged).filter((key) => !orderedKeys.includes(key)).sort();
+            const allKeys = [...orderedKeys, ...restKeys];
+            const updated = stringifyKirbyFields(allKeys.map((key) => [key, merged[key]]));
+            fs.writeFileSync(txtFilePath, updated, 'utf-8');
+        });
 
         res.json({
             success: true,
@@ -3858,7 +3924,7 @@ const deriveLogoExtension = (filename = '', fallbackExt = 'png') => {
     return fallbackExt;
 };
 
-app.post('/api/upload-site-logo', (req, res) => {
+app.post('/api/upload-site-logo', async (req, res) => {
     const { filename = '', dataUrl = '' } = req.body ?? {};
     const maxBytes = 5 * 1024 * 1024;
 
@@ -3869,17 +3935,19 @@ app.post('/api/upload-site-logo', (req, res) => {
         }
 
         const ext = deriveLogoExtension(filename, extFromMime);
-        fs.mkdirSync(LIVE_UPLOADS_DIR, { recursive: true });
-
-        for (const entry of fs.readdirSync(LIVE_UPLOADS_DIR)) {
-            if (/^site-logo\./i.test(entry)) {
-                fs.rmSync(path.join(LIVE_UPLOADS_DIR, entry), { force: true });
-            }
-        }
-
         const targetName = `site-logo.${ext}`;
-        const targetPath = path.join(LIVE_UPLOADS_DIR, targetName);
-        fs.writeFileSync(targetPath, buffer);
+        await withLiveContentLock(() => {
+            fs.mkdirSync(LIVE_UPLOADS_DIR, { recursive: true });
+
+            for (const entry of fs.readdirSync(LIVE_UPLOADS_DIR)) {
+                if (/^site-logo\./i.test(entry)) {
+                    fs.rmSync(path.join(LIVE_UPLOADS_DIR, entry), { force: true });
+                }
+            }
+
+            const targetPath = path.join(LIVE_UPLOADS_DIR, targetName);
+            fs.writeFileSync(targetPath, buffer);
+        });
 
         res.json({
             success: true,
@@ -3893,57 +3961,59 @@ app.post('/api/upload-site-logo', (req, res) => {
 });
 
 // ENDPOINT: CREATE NEW KIRBY PAGE
-app.post('/api/create-page', express.json(), (req, res) => {
+app.post('/api/create-page', express.json(), async (req, res) => {
     const { slug, title } = req.body;
     if (!slug || !title) {
         return res.status(400).json({ error: 'Fehlende Parameter: slug oder title' });
     }
 
-    const contentRoot = LIVE_CONTENT_DIR;
-    if (!fs.existsSync(contentRoot)) {
-        fs.mkdirSync(contentRoot, { recursive: true });
-    }
-
-    const existingDirName = findExistingPageDirName(contentRoot, slug);
-    let targetDirName = existingDirName ?? nextListedDirName(contentRoot, slug);
-
-    // If page exists as unlisted slug folder, promote it to listed numbering
-    if (existingDirName && /^\d+_/.test(existingDirName) === false) {
-        const promotedDirName = nextListedDirName(contentRoot, slug);
-        fs.renameSync(
-            path.join(contentRoot, existingDirName),
-            path.join(contentRoot, promotedDirName)
-        );
-        targetDirName = promotedDirName;
-    }
-
-    const contentDir = path.join(contentRoot, targetDirName);
-    const txtFileName = `default.txt`; // UNIVERSAL TEMPLATE
-    const txtFilePath = path.join(contentDir, txtFileName);
-
     try {
-        // Ordner erstellen (wenn er nicht existiert)
-        if (!fs.existsSync(contentDir)) {
-            fs.mkdirSync(contentDir, { recursive: true });
-        }
-
-        // Do not destroy existing content: update title in place if file exists.
-        if (fs.existsSync(txtFilePath)) {
-            const current = fs.readFileSync(txtFilePath, 'utf-8');
-            let updated = current;
-            if (/^Title:/m.test(updated)) {
-                updated = updated.replace(/^Title:.*$/m, `Title: ${title}`);
-            } else {
-                updated = `Title: ${title}\n\n----\n\n${updated}`;
+        await withLiveContentLock(() => {
+            const contentRoot = LIVE_CONTENT_DIR;
+            if (!fs.existsSync(contentRoot)) {
+                fs.mkdirSync(contentRoot, { recursive: true });
             }
-            fs.writeFileSync(txtFilePath, updated, 'utf-8');
-        } else {
-            // Minimales Content-File schreiben (ohne UUID, damit Kirby eine neue generiert)
-            const fileContent = `Title: ${title}\n\n----\n\nLayout: []\n`;
-            fs.writeFileSync(txtFilePath, fileContent, 'utf-8');
-        }
 
-        console.log(`Neue Kirby-Seite angelegt: ${targetDirName}/${txtFileName}`);
+            const existingDirName = findExistingPageDirName(contentRoot, slug);
+            let targetDirName = existingDirName ?? nextListedDirName(contentRoot, slug);
+
+            // If page exists as unlisted slug folder, promote it to listed numbering
+            if (existingDirName && /^\d+_/.test(existingDirName) === false) {
+                const promotedDirName = nextListedDirName(contentRoot, slug);
+                fs.renameSync(
+                    path.join(contentRoot, existingDirName),
+                    path.join(contentRoot, promotedDirName)
+                );
+                targetDirName = promotedDirName;
+            }
+
+            const contentDir = path.join(contentRoot, targetDirName);
+            const txtFileName = `default.txt`; // UNIVERSAL TEMPLATE
+            const txtFilePath = path.join(contentDir, txtFileName);
+
+            // Ordner erstellen (wenn er nicht existiert)
+            if (!fs.existsSync(contentDir)) {
+                fs.mkdirSync(contentDir, { recursive: true });
+            }
+
+            // Do not destroy existing content: update title in place if file exists.
+            if (fs.existsSync(txtFilePath)) {
+                const current = fs.readFileSync(txtFilePath, 'utf-8');
+                let updated = current;
+                if (/^Title:/m.test(updated)) {
+                    updated = updated.replace(/^Title:.*$/m, `Title: ${title}`);
+                } else {
+                    updated = `Title: ${title}\n\n----\n\n${updated}`;
+                }
+                fs.writeFileSync(txtFilePath, updated, 'utf-8');
+            } else {
+                // Minimales Content-File schreiben (ohne UUID, damit Kirby eine neue generiert)
+                const fileContent = `Title: ${title}\n\n----\n\nLayout: []\n`;
+                fs.writeFileSync(txtFilePath, fileContent, 'utf-8');
+            }
+
+            console.log(`Neue Kirby-Seite angelegt: ${targetDirName}/${txtFileName}`);
+        });
         res.json({ success: true, message: 'Seite erfolgreich angelegt' });
 
     } catch (err) {
@@ -3953,7 +4023,7 @@ app.post('/api/create-page', express.json(), (req, res) => {
 });
 
 // ENDPOINT: SYNC SELECTED PAGES FROM ONBOARDING TO KIRBY CONTENT
-app.post('/api/sync-pages', express.json(), (req, res) => {
+app.post('/api/sync-pages', express.json(), async (req, res) => {
     const pages = Array.isArray(req.body?.pages) ? req.body.pages : [];
     const contentRoot = LIVE_CONTENT_DIR;
 
@@ -3975,10 +4045,10 @@ app.post('/api/sync-pages', express.json(), (req, res) => {
             activeProjectId = '';
         }
 
-        const result = syncPagesInContent(contentRoot, pages, {
+        const result = await withLiveContentLock(() => syncPagesInContent(contentRoot, pages, {
             projectPath: activeProjectPath,
             projectId: activeProjectId
-        });
+        }));
         res.json({ success: true, ...result });
     } catch (err) {
         console.error('Fehler beim Synchronisieren der Seiten:', err);
@@ -3987,12 +4057,12 @@ app.post('/api/sync-pages', express.json(), (req, res) => {
 });
 
 // ENDPOINT: HARD RESET PAGES FOR "NEW PROJECT"
-app.post('/api/reset-pages', express.json(), (req, res) => {
+app.post('/api/reset-pages', express.json(), async (req, res) => {
     const pages = Array.isArray(req.body?.pages) ? req.body.pages : [];
     const contentRoot = LIVE_CONTENT_DIR;
 
     try {
-        const result = hardResetPagesInContent(contentRoot, pages);
+        const result = await withLiveContentLock(() => hardResetPagesInContent(contentRoot, pages));
         res.json({ success: true, ...result });
     } catch (err) {
         console.error('Fehler beim Zuruecksetzen der Seiten:', err);
