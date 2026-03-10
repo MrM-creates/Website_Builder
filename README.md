@@ -3,6 +3,7 @@
 ## Desktop-Start (Electron Basis)
 
 - `npm run desktop:dev` startet Flider in einem Desktop-Fenster.
+- Auf macOS wird dafuer LaunchServices (`open -na`) genutzt, um Startprobleme mit direktem Electron-CLI zu vermeiden.
 - Beim Start wird der lokale Stack (Backend 3001, Frontend 5173, Kirby 8000) automatisch geprueft und bei Bedarf gestartet.
 
 Optional: Stack beim Schliessen der Desktop-App automatisch stoppen:

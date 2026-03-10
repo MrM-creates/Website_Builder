@@ -19,7 +19,8 @@
     "dev:bg:autostart:uninstall": "bash ./scripts/dev-bg-autostart-uninstall.sh",
     "brand:icons": "bash ./scripts/brand-icons-build.sh",
     "smoke:projects": "bash ./scripts/smoke-project-persistence.sh",
-    "desktop:dev": "electron .",
+    "desktop:dev": "node ./scripts/desktop-dev-start.mjs",
+    "desktop:dev:cli": "electron .",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -39,7 +40,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react-swc": "^4.2.2",
-    "electron": "^31.7.7",
+    "electron": "^40.8.0",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
