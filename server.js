@@ -746,29 +746,33 @@ const syncPagesInContent = (
     }
 
     const renameFromSet = new Set(renameOps.map((op) => op.from));
-    const blockedNames = new Set(
-        dirs.filter((name) => renameFromSet.has(name) === false)
-    );
-    for (const page of selected) {
-        blockedNames.add(page.desiredDir);
-    }
+    // Remove or recover orphan content dirs so Kirby doesn't show duplicate draft pages.
+    // Old behavior renamed them to "*-legacy" inside content/, which still appears in Panel.
+    const orphanDirs = dirs.filter((entry) => {
+        if (!entry || entry.startsWith('.')) return false;
+        if (entry === 'error' || entry === PROJECT_RECOVERY_DIR_NAME) return false;
+        if (usedDirs.has(entry)) return false;
+        if (renameFromSet.has(entry)) return false;
+        return true;
+    });
 
-    const listedDirs = dirs.filter((entry) => /^\d+_/.test(entry));
-    let legacyCounter = 1;
-    for (const entry of listedDirs) {
-        if (usedDirs.has(entry)) continue;
-        if (renameFromSet.has(entry)) continue;
+    for (const orphan of orphanDirs) {
+        const orphanPath = path.join(contentRoot, orphan);
+        if (!fs.existsSync(orphanPath)) continue;
 
-        const rawBase = entry.replace(/^\d+_/, '');
-        const baseSlug = sanitizeSlug(rawBase) || 'page';
-        let candidate = `${baseSlug}-legacy`;
-        while (blockedNames.has(candidate)) {
-            legacyCounter += 1;
-            candidate = `${baseSlug}-legacy-${legacyCounter}`;
+        const recoveryRoot = getRecoveryRoot();
+        if (recoveryRoot) {
+            movePathToRecovery({
+                absolutePath: orphanPath,
+                contentRoot,
+                projectPath,
+                projectId,
+                recoveryRoot,
+                reason: 'orphan-content-dir-moved'
+            });
+        } else {
+            fs.rmSync(orphanPath, { recursive: true, force: true });
         }
-
-        renameOps.push({ from: entry, to: candidate });
-        blockedNames.add(candidate);
     }
 
     const stagedRenames = [];
@@ -2628,6 +2632,32 @@ const saveProjectAtPath = (projectPathInput, statePayload = {}) => {
 
     const rawStatePayload = statePayload && typeof statePayload === 'object' ? statePayload : {};
     const { pages: _ignoredPages, ...stateWithoutPages } = rawStatePayload;
+
+    // Keep site meta canonical in Kirby content before taking the project snapshot.
+    // This closes timing gaps where footer/logo/title changed in UI but weren't yet
+    // flushed to site.txt when a project switch/save is triggered.
+    const hasOwn = (key) => Object.prototype.hasOwnProperty.call(rawStatePayload, key);
+    const containsMetaPayload =
+        hasOwn('projectName') ||
+        hasOwn('siteLogoUrl') ||
+        hasOwn('footerLine1') ||
+        hasOwn('footerLine2') ||
+        hasOwn('footerLine3');
+
+    if (containsMetaPayload) {
+        try {
+            const currentMeta = readSiteMetaFromContent(LIVE_CONTENT_DIR);
+            updateSiteMetaInContent(LIVE_CONTENT_DIR, {
+                title: hasOwn('projectName') ? String(rawStatePayload.projectName ?? '') : currentMeta.title,
+                siteLogoUrl: hasOwn('siteLogoUrl') ? String(rawStatePayload.siteLogoUrl ?? '') : currentMeta.logo,
+                footerLine1: hasOwn('footerLine1') ? String(rawStatePayload.footerLine1 ?? '') : currentMeta.footerLine1,
+                footerLine2: hasOwn('footerLine2') ? String(rawStatePayload.footerLine2 ?? '') : currentMeta.footerLine2,
+                footerLine3: hasOwn('footerLine3') ? String(rawStatePayload.footerLine3 ?? '') : currentMeta.footerLine3
+            });
+        } catch (error) {
+            console.warn('Site-Meta konnte vor Snapshot nicht aktualisiert werden:', error?.message || error);
+        }
+    }
 
     writeJsonFile(projectManifestPath(projectPath, { forWrite: true }), manifest);
     writeJsonFile(projectStatePath(projectPath, { forWrite: true }), stateWithoutPages);

@@ -740,7 +740,22 @@ function App() {
     setIsOpeningProject(true);
 
     try {
-      if (currentProjectId && step !== 'welcome') {
+      if (currentProjectId) {
+        try {
+          await fetch(`${BACKEND_URL}/api/update-site-meta`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: projectName,
+              siteLogoUrl,
+              footerLine1,
+              footerLine2,
+              footerLine3,
+            }),
+          });
+        } catch {
+          // best effort only before snapshot save
+        }
         try {
           await saveCurrentProject();
         } catch (err) {
@@ -767,36 +782,21 @@ function App() {
         const metaData = await metaRes.json().catch(() => ({}));
         if (metaRes.ok && metaData?.success) {
           const siteMeta = metaData?.siteMeta || {};
-          const mergePreferState = (stateValue, metaValue) => {
-            const stateRaw = stateValue ?? '';
-            const metaRaw = metaValue ?? '';
-            const normalizedState = String(stateRaw).trim();
-            const normalizedMeta = String(metaRaw).trim();
-            if (normalizedState) return String(stateRaw);
-            if (normalizedMeta) return String(metaRaw);
-            return String(stateRaw || metaRaw || '');
+          const hasStateField = (fieldName) =>
+            Object.prototype.hasOwnProperty.call(loadedState, fieldName);
+          const mergePreferState = (fieldName, stateValue, metaValue) => {
+            // Important: explicit empty strings from saved project state must win.
+            if (hasStateField(fieldName)) {
+              return String(stateValue ?? '');
+            }
+            return String(metaValue ?? '');
           };
 
-          loadedState.siteLogoUrl = mergePreferState(
-            loadedState.siteLogoUrl,
-            siteMeta.logo
-          );
-          loadedState.footerLine1 = mergePreferState(
-            loadedState.footerLine1,
-            siteMeta.footerLine1
-          );
-          loadedState.footerLine2 = mergePreferState(
-            loadedState.footerLine2,
-            siteMeta.footerLine2
-          );
-          loadedState.footerLine3 = mergePreferState(
-            loadedState.footerLine3,
-            siteMeta.footerLine3
-          );
-          loadedState.projectName = mergePreferState(
-            loadedState.projectName,
-            siteMeta.title
-          );
+          loadedState.siteLogoUrl = mergePreferState('siteLogoUrl', loadedState.siteLogoUrl, siteMeta.logo);
+          loadedState.footerLine1 = mergePreferState('footerLine1', loadedState.footerLine1, siteMeta.footerLine1);
+          loadedState.footerLine2 = mergePreferState('footerLine2', loadedState.footerLine2, siteMeta.footerLine2);
+          loadedState.footerLine3 = mergePreferState('footerLine3', loadedState.footerLine3, siteMeta.footerLine3);
+          loadedState.projectName = mergePreferState('projectName', loadedState.projectName, siteMeta.title);
         }
       } catch {
         // ignore site meta fallback errors
@@ -1260,7 +1260,7 @@ function App() {
   const performStartNewProject = async (projectPath) => {
     isResettingProjectRef.current = true;
 
-    if (currentProjectId && step !== 'welcome') {
+    if (currentProjectId) {
       try {
         await saveCurrentProject();
       } catch {
@@ -1944,7 +1944,33 @@ function App() {
               type="button"
               aria-label={`${BRAND_NAME} Startseite`}
               style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
-              onClick={() => { setShowProjectList(false); setProjectError(''); setStep('welcome'); }}
+              onClick={async () => {
+                setShowProjectList(false);
+                setProjectError('');
+                if (currentProjectId && !isResettingProjectRef.current) {
+                  try {
+                    await fetch(`${BACKEND_URL}/api/update-site-meta`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        title: projectName,
+                        siteLogoUrl,
+                        footerLine1,
+                        footerLine2,
+                        footerLine3,
+                      }),
+                    });
+                  } catch {
+                    // ignore best-effort flush
+                  }
+                  try {
+                    await saveCurrentProject();
+                  } catch {
+                    // ignore save errors on welcome-navigation
+                  }
+                }
+                setStep('welcome');
+              }}
             >
               <img src={BRAND_WORDMARK_DARK} alt={BRAND_NAME} style={{ height: '42px', width: 'auto', display: 'block' }} />
             </button>
