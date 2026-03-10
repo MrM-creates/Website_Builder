@@ -2,6 +2,7 @@
   "name": "website-builder",
   "private": true,
   "version": "0.0.0",
+  "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
     "dev:stack": "concurrently --restart-tries 10 --restart-after 1500 -n \"backend,frontend,kirby\" -c \"magenta,cyan,blue\" \"node server.js\" \"vite --host 127.0.0.1 --strictPort\" \"bash ./scripts/run-kirby-dev.sh\"",
@@ -18,6 +19,7 @@
     "dev:bg:autostart:uninstall": "bash ./scripts/dev-bg-autostart-uninstall.sh",
     "brand:icons": "bash ./scripts/brand-icons-build.sh",
     "smoke:projects": "bash ./scripts/smoke-project-persistence.sh",
+    "desktop:dev": "electron .",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -37,6 +39,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react-swc": "^4.2.2",
+    "electron": "^31.7.7",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",

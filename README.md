@@ -1,5 +1,17 @@
 # React + Vite
 
+## Desktop-Start (Electron Basis)
+
+- `npm run desktop:dev` startet Flider in einem Desktop-Fenster.
+- Beim Start wird der lokale Stack (Backend 3001, Frontend 5173, Kirby 8000) automatisch geprueft und bei Bedarf gestartet.
+
+Optional: Stack beim Schliessen der Desktop-App automatisch stoppen:
+
+- macOS/Linux: `FLIDER_DESKTOP_STOP_STACK_ON_QUIT=1 npm run desktop:dev`
+- Windows PowerShell:
+  - `$env:FLIDER_DESKTOP_STOP_STACK_ON_QUIT='1'`
+  - `npm run desktop:dev`
+
 ## Dev-Server stabil starten
 
 Nutze fuer den lokalen Betrieb diese Befehle:
