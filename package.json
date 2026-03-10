@@ -23,7 +23,7 @@
     "smoke:projects": "bash ./scripts/smoke-project-persistence.sh",
     "desktop:dev": "node ./scripts/desktop-dev-start.mjs",
     "desktop:dev:cli": "electron .",
-    "desktop:build:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --publish never",
+    "desktop:build:mac": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --publish never && bash ./scripts/desktop-build-cleanup.sh",
     "desktop:build:dir": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir --publish never",
     "build": "vite build",
     "lint": "eslint .",
