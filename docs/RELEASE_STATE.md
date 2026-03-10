@@ -2,12 +2,14 @@
 
 Date: 2026-03-10
 Branch: `codex/pages-ftp-fixes-2026-03-04`
-Freeze Commit: `a52e13a`
+Freeze Commit: `3c0b433`
+Sign-Off Tag: `v1.0.0-rc2`
 
 ## Scope Frozen for Deployment
 
 This baseline is the stable production candidate. No experimental editor features are active in the UI.
 Only bugfixes are allowed from this point until release sign-off.
+Sign-off is completed for RC2.
 
 ## Included in this release
 
@@ -44,4 +46,5 @@ Only bugfixes are allowed from this point until release sign-off.
 
 - `npm run build` passed
 - `npm run smoke:projects` passed
+- `GET /api/system/health` passed (backend/frontend/kirby up)
 - Manual checks passed: App↔Editor sync, local preview, live publish, website open
