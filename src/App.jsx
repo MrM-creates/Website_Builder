@@ -341,6 +341,7 @@ function HelpBadgeIcon({ label = 'Hilfe' }) {
 function App() {
   const BACKEND_URL = 'http://127.0.0.1:3001';
   const BRAND_NAME = 'Flider.';
+  const APP_VERSION = 'v1.0.0-rc1';
   const BRAND_WORDMARK_DARK = '/brand/flider_wordmark_dark.svg?v=3';
   const SITE_LOGO_MAX_MB = 5;
   const SITE_LOGO_ALLOWED_TYPES = new Set([
@@ -2820,7 +2821,7 @@ function App() {
         background: 'rgba(8,8,10,0.72)',
         letterSpacing: '0.02em'
       }}>
-        Designed with the power of AI · © {appFooterYear} MrM
+        Designed with the power of AI · © {appFooterYear} MrM · {APP_VERSION}
       </footer>
 
       {/* ================================================================
