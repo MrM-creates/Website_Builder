@@ -766,7 +766,37 @@ function App() {
         const metaRes = await fetch(`${BACKEND_URL}/api/site-meta`);
         const metaData = await metaRes.json().catch(() => ({}));
         if (metaRes.ok && metaData?.success) {
-          loadedState.siteLogoUrl = String(metaData?.siteMeta?.logo || '');
+          const siteMeta = metaData?.siteMeta || {};
+          const mergePreferState = (stateValue, metaValue) => {
+            const stateRaw = stateValue ?? '';
+            const metaRaw = metaValue ?? '';
+            const normalizedState = String(stateRaw).trim();
+            const normalizedMeta = String(metaRaw).trim();
+            if (normalizedState) return String(stateRaw);
+            if (normalizedMeta) return String(metaRaw);
+            return String(stateRaw || metaRaw || '');
+          };
+
+          loadedState.siteLogoUrl = mergePreferState(
+            loadedState.siteLogoUrl,
+            siteMeta.logo
+          );
+          loadedState.footerLine1 = mergePreferState(
+            loadedState.footerLine1,
+            siteMeta.footerLine1
+          );
+          loadedState.footerLine2 = mergePreferState(
+            loadedState.footerLine2,
+            siteMeta.footerLine2
+          );
+          loadedState.footerLine3 = mergePreferState(
+            loadedState.footerLine3,
+            siteMeta.footerLine3
+          );
+          loadedState.projectName = mergePreferState(
+            loadedState.projectName,
+            siteMeta.title
+          );
         }
       } catch {
         // ignore site meta fallback errors
@@ -1057,6 +1087,28 @@ function App() {
     lastPublishedViewUrl,
     lastPublishedSignature
   ]);
+
+  useEffect(() => {
+    if (step !== 'editor' || isApplyingProjectStateRef.current || isResettingProjectRef.current) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      fetch(`${BACKEND_URL}/api/update-site-meta`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: projectName,
+          siteLogoUrl,
+          footerLine1,
+          footerLine2,
+          footerLine3,
+        }),
+      }).catch(() => {});
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [step, projectName, siteLogoUrl, footerLine1, footerLine2, footerLine3]);
 
   useEffect(() => {
     if (!currentProjectId || step !== 'editor' || isResettingProjectRef.current) return;

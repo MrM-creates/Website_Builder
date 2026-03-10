@@ -2,6 +2,7 @@ const { app, BrowserWindow, dialog, shell } = require('electron');
 const { spawn } = require('child_process');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const FRONTEND_URL = 'http://127.0.0.1:5173/';
@@ -11,9 +12,64 @@ const HEALTH_POLL_MS = 600;
 
 let mainWindow = null;
 let stackStartedByDesktop = false;
+let desktopRuntime = null;
+
+const ensureDesktopRuntime = () => {
+  if (!app.isPackaged) {
+    desktopRuntime = null;
+    return null;
+  }
+
+  const userDataRoot = app.getPath('userData');
+  const runtimeRoot = path.join(userDataRoot, 'runtime');
+  const stateDir = path.join(runtimeRoot, '.flatsite');
+  const kirbyRoot = path.join(runtimeRoot, 'kirby-cms');
+  const kirbyTemplateRoot = path.join(PROJECT_ROOT, 'kirby-cms');
+  const legacyBundledStateDir = path.join(PROJECT_ROOT, '.flatsite');
+
+  if (!fs.existsSync(kirbyTemplateRoot)) {
+    throw new Error(`Kirby-Template fehlt: ${kirbyTemplateRoot}`);
+  }
+
+  fs.mkdirSync(runtimeRoot, { recursive: true });
+
+  // First run: create a writable Kirby runtime outside the signed app bundle.
+  if (!fs.existsSync(kirbyRoot)) {
+    fs.cpSync(kirbyTemplateRoot, kirbyRoot, { recursive: true });
+  }
+
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.mkdirSync(path.join(kirbyRoot, 'content'), { recursive: true });
+  fs.mkdirSync(path.join(kirbyRoot, 'assets', 'css'), { recursive: true });
+  fs.mkdirSync(path.join(kirbyRoot, 'assets', 'uploads'), { recursive: true });
+
+  // One-time migration from older packaged builds that stored state in the app bundle.
+  if (fs.existsSync(legacyBundledStateDir)) {
+    for (const name of [
+      'projects-history.json',
+      'active-project.json',
+      'config.json',
+      'admin-credentials.json'
+    ]) {
+      const source = path.join(legacyBundledStateDir, name);
+      const target = path.join(stateDir, name);
+      if (fs.existsSync(source) && !fs.existsSync(target)) {
+        fs.copyFileSync(source, target);
+      }
+    }
+  }
+
+  desktopRuntime = { runtimeRoot, stateDir, kirbyRoot };
+  return desktopRuntime;
+};
 
 const stackRuntimeEnv = () => {
   const env = { ...process.env };
+  if (desktopRuntime) {
+    env.FLIDER_RUNTIME_ROOT = desktopRuntime.runtimeRoot;
+    env.FLIDER_STATE_DIR = desktopRuntime.stateDir;
+    env.FLIDER_KIRBY_ROOT = desktopRuntime.kirbyRoot;
+  }
   if (app.isPackaged) {
     env.FLIDER_NODE_BIN = process.execPath;
     env.FLIDER_ELECTRON_RUN_AS_NODE = '1';
@@ -163,6 +219,7 @@ app.on('before-quit', () => {
 
 app.whenReady().then(async () => {
   try {
+    ensureDesktopRuntime();
     await ensureStack();
     await createMainWindow();
   } catch (error) {

@@ -11,6 +11,13 @@ import os from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const APP_ROOT = __dirname;
+const FLIDER_RUNTIME_ROOT = String(process.env.FLIDER_RUNTIME_ROOT || '').trim()
+    ? path.resolve(String(process.env.FLIDER_RUNTIME_ROOT || '').trim())
+    : APP_ROOT;
+const KIRBY_ROOT = String(process.env.FLIDER_KIRBY_ROOT || '').trim()
+    ? path.resolve(String(process.env.FLIDER_KIRBY_ROOT || '').trim())
+    : path.join(APP_ROOT, 'kirby-cms');
 
 const app = express();
 const PORT = 3001;
@@ -22,15 +29,17 @@ const DEFAULT_ADMIN_EMAIL = 'admin@flider.local';
 const DEFAULT_ADMIN_NAME = 'Flatsite Admin';
 const DEFAULT_ADMIN_LANGUAGE = 'de';
 const DEFAULT_ADMIN_ROLE = 'admin';
-const FLATSITE_DIR = path.join(__dirname, '.flatsite');
+const FLATSITE_DIR = String(process.env.FLIDER_STATE_DIR || '').trim()
+    ? path.resolve(String(process.env.FLIDER_STATE_DIR || '').trim())
+    : path.join(FLIDER_RUNTIME_ROOT, '.flatsite');
 const STORAGE_CONFIG_FILE = path.join(FLATSITE_DIR, 'config.json');
 const ACTIVE_PROJECT_FILE = path.join(FLATSITE_DIR, 'active-project.json');
 const REPAIR_LOG_FILE = path.join(FLATSITE_DIR, 'repair-events.log');
 const ADMIN_CREDENTIALS_FILE = path.join(FLATSITE_DIR, 'admin-credentials.json');
 const PROJECT_RECOVERY_DIR_NAME = '_recovery';
-const LIVE_CONTENT_DIR = path.join(__dirname, 'kirby-cms', 'content');
-const LIVE_CUSTOM_CSS_PATH = path.join(__dirname, 'kirby-cms', 'assets', 'css', 'custom.css');
-const LIVE_UPLOADS_DIR = path.join(__dirname, 'kirby-cms', 'assets', 'uploads');
+const LIVE_CONTENT_DIR = path.join(KIRBY_ROOT, 'content');
+const LIVE_CUSTOM_CSS_PATH = path.join(KIRBY_ROOT, 'assets', 'css', 'custom.css');
+const LIVE_UPLOADS_DIR = path.join(KIRBY_ROOT, 'assets', 'uploads');
 
 const parseField = (content, key) => {
     const match = content.match(new RegExp(`^${key}:\\s*(.+)$`, 'mi'));
@@ -1987,8 +1996,8 @@ const hashPathTree = (rootDir, currentDir, hash) => {
 
 const computeProjectSignature = () => {
     const hash = crypto.createHash('sha256');
-    const contentRoot = path.join(__dirname, 'kirby-cms', 'content');
-    const customCssPath = path.join(__dirname, 'kirby-cms', 'assets', 'css', 'custom.css');
+    const contentRoot = LIVE_CONTENT_DIR;
+    const customCssPath = LIVE_CUSTOM_CSS_PATH;
 
     if (fs.existsSync(contentRoot)) {
         hashPathTree(contentRoot, contentRoot, hash);
@@ -3273,7 +3282,7 @@ app.post('/api/deploy', async (req, res) => {
         footerLine2 = '',
         footerLine3 = ''
     } = req.body ?? {};
-    const kirbyRoot = path.join(__dirname, 'kirby-cms');
+    const kirbyRoot = KIRBY_ROOT;
 
     if (!host || !user || !password) {
         return res.status(400).json({ error: 'Fehlende FTP Credentials' });
@@ -3632,7 +3641,7 @@ app.post('/api/deploy', async (req, res) => {
 // ENDPOINT: UPDATE THEME VARIABLES (CSS Manipulation)
 app.post('/api/update-theme', (req, res) => {
     const { font, fontHeading, fontBody, colorPrimary, colorBg, colorText } = req.body;
-    const cssPath = path.join(__dirname, 'kirby-cms', 'assets', 'css', 'custom.css');
+    const cssPath = LIVE_CUSTOM_CSS_PATH;
     const resolvedBodyFont = fontBody || font || '"Inter", sans-serif';
     const resolvedHeadingFont = fontHeading || font || '"Inter", sans-serif';
 
@@ -3666,7 +3675,7 @@ app.post('/api/update-theme', (req, res) => {
 // ENDPOINT: UPDATE SITE TITLE
 app.post('/api/update-site-title', (req, res) => {
     const { title } = req.body ?? {};
-    const contentDir = path.join(__dirname, 'kirby-cms', 'content');
+    const contentDir = LIVE_CONTENT_DIR;
 
     try {
         updateSiteTitleInContent(contentDir, title);
@@ -3680,7 +3689,7 @@ app.post('/api/update-site-title', (req, res) => {
 // ENDPOINT: UPDATE SITE META (title + footer fields from Flatsite UI)
 app.post('/api/update-site-meta', (req, res) => {
     const { title, siteLogoUrl, footerLine1 = '', footerLine2 = '', footerLine3 = '' } = req.body ?? {};
-    const contentDir = path.join(__dirname, 'kirby-cms', 'content');
+    const contentDir = LIVE_CONTENT_DIR;
 
     try {
         updateSiteMetaInContent(contentDir, { title, siteLogoUrl, footerLine1, footerLine2, footerLine3 });
@@ -3693,7 +3702,7 @@ app.post('/api/update-site-meta', (req, res) => {
 
 app.get('/api/site-meta', (req, res) => {
     try {
-        const contentDir = path.join(__dirname, 'kirby-cms', 'content');
+        const contentDir = LIVE_CONTENT_DIR;
         const siteMeta = readSiteMetaFromContent(contentDir);
         res.json({ success: true, siteMeta });
     } catch (err) {
@@ -3710,7 +3719,7 @@ app.post('/api/seo/suggest', express.json(), (req, res) => {
     }
 
     try {
-        const contentRoot = path.join(__dirname, 'kirby-cms', 'content');
+        const contentRoot = LIVE_CONTENT_DIR;
         const txtFilePath = resolvePageDefaultFileBySlug(contentRoot, slug);
         if (!txtFilePath) {
             return res.status(404).json({ error: 'Seiteninhalt nicht gefunden' });
@@ -3751,7 +3760,7 @@ app.post('/api/seo/update', express.json(), (req, res) => {
     }
 
     try {
-        const contentRoot = path.join(__dirname, 'kirby-cms', 'content');
+        const contentRoot = LIVE_CONTENT_DIR;
         const txtFilePath = resolvePageDefaultFileBySlug(contentRoot, slug);
         if (!txtFilePath) {
             return res.status(404).json({ error: 'Seiteninhalt nicht gefunden' });
@@ -3860,7 +3869,7 @@ app.post('/api/create-page', express.json(), (req, res) => {
         return res.status(400).json({ error: 'Fehlende Parameter: slug oder title' });
     }
 
-    const contentRoot = path.join(__dirname, 'kirby-cms', 'content');
+    const contentRoot = LIVE_CONTENT_DIR;
     if (!fs.existsSync(contentRoot)) {
         fs.mkdirSync(contentRoot, { recursive: true });
     }
@@ -3916,7 +3925,7 @@ app.post('/api/create-page', express.json(), (req, res) => {
 // ENDPOINT: SYNC SELECTED PAGES FROM ONBOARDING TO KIRBY CONTENT
 app.post('/api/sync-pages', express.json(), (req, res) => {
     const pages = Array.isArray(req.body?.pages) ? req.body.pages : [];
-    const contentRoot = path.join(__dirname, 'kirby-cms', 'content');
+    const contentRoot = LIVE_CONTENT_DIR;
 
     try {
         let activeProjectPath = '';
@@ -3950,7 +3959,7 @@ app.post('/api/sync-pages', express.json(), (req, res) => {
 // ENDPOINT: HARD RESET PAGES FOR "NEW PROJECT"
 app.post('/api/reset-pages', express.json(), (req, res) => {
     const pages = Array.isArray(req.body?.pages) ? req.body.pages : [];
-    const contentRoot = path.join(__dirname, 'kirby-cms', 'content');
+    const contentRoot = LIVE_CONTENT_DIR;
 
     try {
         const result = hardResetPagesInContent(contentRoot, pages);
@@ -3962,7 +3971,7 @@ app.post('/api/reset-pages', express.json(), (req, res) => {
 });
 
 app.get('/api/content-pages', (req, res) => {
-    const contentRoot = path.join(__dirname, 'kirby-cms', 'content');
+    const contentRoot = LIVE_CONTENT_DIR;
 
     try {
         const pages = listPagesForFlatsiteUi(contentRoot);
@@ -3976,7 +3985,7 @@ app.get('/api/content-pages', (req, res) => {
 // ENDPOINT: ENSURE KIRBY ACCOUNT EXISTS (Invisible to the user)
 app.post('/api/ensure-account', (req, res) => {
     const { email = '' } = req.body ?? {};
-    const accountsDir = path.join(__dirname, 'kirby-cms', 'site', 'accounts');
+    const accountsDir = path.join(KIRBY_ROOT, 'site', 'accounts');
 
     try {
         const account = ensureAdminAccount(accountsDir, { email });
@@ -3993,7 +4002,7 @@ app.post('/api/ensure-account', (req, res) => {
 // ENDPOINT: AUTO-LOGIN (Kirby-native login via API and forwarded session cookie)
 app.post('/api/auto-login', async (req, res) => {
     try {
-        const accountsDir = path.join(__dirname, 'kirby-cms', 'site', 'accounts');
+        const accountsDir = path.join(KIRBY_ROOT, 'site', 'accounts');
         const account = ensureAdminAccount(accountsDir, {});
 
         const loginResponse = await fetch('http://127.0.0.1:8000/api/auth/login', {

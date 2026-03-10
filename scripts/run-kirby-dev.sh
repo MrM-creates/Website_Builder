@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-KIRBY_ROOT="$ROOT/kirby-cms"
+KIRBY_ROOT="${FLIDER_KIRBY_ROOT:-$ROOT/kirby-cms}"
 PHP_MEMORY_LIMIT="${PHP_MEMORY_LIMIT:-1024M}"
 
 pick_php_bin() {
