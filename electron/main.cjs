@@ -1,8 +1,9 @@
-const { app, BrowserWindow, dialog, shell } = require('electron');
+const { app, BrowserWindow, dialog, shell, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const http = require('http');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const FRONTEND_URL = 'http://127.0.0.1:5173/';
@@ -114,6 +115,84 @@ const stopStackDetached = () => {
   child.unref();
 };
 
+const startStackRecoveryDetached = () => {
+  const child = spawn('bash', [path.join(PROJECT_ROOT, 'scripts', 'dev-bg-ensure.sh')], {
+    cwd: PROJECT_ROOT,
+    detached: true,
+    stdio: 'ignore',
+    shell: false,
+    env: stackRuntimeEnv()
+  });
+  child.unref();
+  return child.pid || null;
+};
+
+const nowCompactTimestamp = () => {
+  const d = new Date();
+  const yyyy = String(d.getFullYear());
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${yyyy}${mm}${dd}-${hh}${mi}${ss}`;
+};
+
+const supportReportsDir = () => {
+  if (desktopRuntime?.stateDir) {
+    return path.join(desktopRuntime.stateDir, 'reports');
+  }
+  return path.join(PROJECT_ROOT, '.flatsite', 'reports');
+};
+
+const writeLocalIssueReport = (payload = {}) => {
+  const reportDir = supportReportsDir();
+  fs.mkdirSync(reportDir, { recursive: true });
+
+  const reportId = typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : crypto.randomBytes(16).toString('hex');
+
+  const incident = payload && typeof payload.incident === 'object' ? payload.incident : {};
+  const report = {
+    schemaVersion: '1.0',
+    reportType: 'diagnostic-report',
+    reportId,
+    timestamp: new Date().toISOString(),
+    app: payload?.app || { name: 'Flider', version: 'unknown' },
+    environment: payload?.environment || {},
+    project: payload?.project || { id: 'unknown', path: PROJECT_ROOT },
+    incident: {
+      errorCode: String(incident.errorCode || 'SRV_UNHEALTHY'),
+      severity: String(incident.severity || 'P1'),
+      message: String(incident.message || 'Problem gemeldet'),
+      reproSteps: Array.isArray(incident.reproSteps) && incident.reproSteps.length
+        ? incident.reproSteps.map((step) => String(step))
+        : ['Problem in App gemeldet']
+    },
+    services: payload?.diagnostics?.health || {},
+    recovery: {
+      suggestedSteps: Array.isArray(payload?.diagnostics?.recoverySteps)
+        ? payload.diagnostics.recoverySteps.map((step) => String(step))
+        : [],
+      actionsTried: Array.isArray(payload?.diagnostics?.actionsTried)
+        ? payload.diagnostics.actionsTried
+        : []
+    },
+    attachments: []
+  };
+
+  const filename = `report-${nowCompactTimestamp()}-${String(reportId).slice(0, 8)}.json`;
+  const reportPath = path.join(reportDir, filename);
+  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2), 'utf-8');
+
+  return {
+    reportId,
+    reportPath,
+    summary: `[${report.incident.errorCode}/${report.incident.severity}] ${report.incident.message} (${report.timestamp})`
+  };
+};
+
 const readJson = (url) =>
   new Promise((resolve, reject) => {
     const req = http.get(url, (res) => {
@@ -214,6 +293,38 @@ app.on('before-quit', () => {
     (process.env.FLIDER_DESKTOP_STOP_STACK_ON_QUIT === '1' || app.isPackaged)
   ) {
     stopStackDetached();
+  }
+});
+
+ipcMain.handle('flider:restart-services', async () => {
+  try {
+    const pid = startStackRecoveryDetached();
+    return {
+      success: true,
+      message: 'System-Recovery wurde gestartet',
+      pid
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: String(error?.message || 'System-Recovery konnte nicht gestartet werden')
+    };
+  }
+});
+
+ipcMain.handle('flider:save-issue-report', async (_event, payload) => {
+  try {
+    const result = writeLocalIssueReport(payload || {});
+    return {
+      success: true,
+      ...result,
+      message: 'Problembericht wurde lokal gespeichert'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: String(error?.message || 'Problembericht konnte nicht gespeichert werden')
+    };
   }
 });
 

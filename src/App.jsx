@@ -935,14 +935,30 @@ function App() {
     setIsRestartingServices(true);
 
     try {
+      let restartAccepted = false;
       try {
-        await fetch(`${BACKEND_URL}/api/system/restart`, {
+        const response = await fetch(`${BACKEND_URL}/api/system/restart`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reason: 'safe-mode-restart' }),
         });
+        restartAccepted = response.ok;
       } catch {
-        // Backend may go down during restart trigger; continue with polling.
+        restartAccepted = false;
+      }
+
+      if (!restartAccepted && window?.fliderDesktop?.restartServices) {
+        try {
+          const ipcResult = await window.fliderDesktop.restartServices();
+          restartAccepted = Boolean(ipcResult?.success);
+        } catch {
+          restartAccepted = false;
+        }
+      }
+
+      if (!restartAccepted) {
+        setIssueReportFeedback('Neustart konnte nicht gestartet werden. Bitte App kurz neu oeffnen.');
+        return;
       }
 
       // Wait briefly for restart process to kick in.
@@ -1042,15 +1058,39 @@ function App() {
         },
       };
 
-      const response = await fetch(`${BACKEND_URL}/api/system/report-issue`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json().catch(() => ({}));
+      let data = null;
+      let reportSaved = false;
+      try {
+        const response = await fetch(`${BACKEND_URL}/api/system/report-issue`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const responseData = await response.json().catch(() => ({}));
+        if (response.ok && responseData?.success) {
+          data = responseData;
+          reportSaved = true;
+        }
+      } catch {
+        reportSaved = false;
+      }
 
-      if (!response.ok || !data?.success) {
-        setIssueReportFeedback(data?.error || 'Problembericht konnte nicht erstellt werden.');
+      if (!reportSaved && window?.fliderDesktop?.saveIssueReport) {
+        try {
+          const ipcData = await window.fliderDesktop.saveIssueReport(payload);
+          if (ipcData?.success) {
+            data = ipcData;
+            reportSaved = true;
+          } else {
+            data = ipcData;
+          }
+        } catch {
+          reportSaved = false;
+        }
+      }
+
+      if (!reportSaved || !data?.success) {
+        setIssueReportFeedback((data && data.error) || 'Problembericht konnte nicht erstellt werden.');
         return;
       }
 

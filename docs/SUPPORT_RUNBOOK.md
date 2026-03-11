@@ -40,6 +40,8 @@ Zugehoeriger Error-Code-Katalog:
 
 - Diagnosepaket lokal speichern
 - `Diagnose kopieren` (Kurztext) fuer manuelle Mail
+- Hinweis: Bei komplett ausgefallenem Backend nutzt die Desktop-App einen lokalen Fallback
+  (Electron-Bridge) fuer `Dienste neu starten` und `Problem melden`.
 
 ## 4. Preflight-Healthcheck (beim App-Start)
 
