@@ -342,6 +342,8 @@ function App() {
   const BACKEND_URL = 'http://127.0.0.1:3001';
   const BRAND_NAME = 'Flider.';
   const APP_VERSION = 'v1.0.0-rc2';
+  const SAFE_MODE_AUTO_REPAIR_MAX_TRIES = 2;
+  const SAFE_MODE_AUTO_REPAIR_RETRY_DELAY_MS = 1400;
   const BRAND_WORDMARK_DARK = '/brand/flider_wordmark_dark.svg?v=3';
   const SITE_LOGO_MAX_MB = 5;
   const SITE_LOGO_ALLOWED_TYPES = new Set([
@@ -413,6 +415,7 @@ function App() {
   const [backendFailureCount, setBackendFailureCount] = useState(0);
   const [isAutoRepairing, setIsAutoRepairing] = useState(false);
   const [safeModeRepairFailed, setSafeModeRepairFailed] = useState(false);
+  const [safeModeCanSendSupport, setSafeModeCanSendSupport] = useState(false);
   const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
   const [isRestartingServices, setIsRestartingServices] = useState(false);
   const [isReportingIssue, setIsReportingIssue] = useState(false);
@@ -440,7 +443,7 @@ function App() {
   const isResettingProjectRef = useRef(false);
   const saveQueueRef = useRef(Promise.resolve());
   const startupPreflightDoneRef = useRef(false);
-  const safeModeAutoRepairTriggeredRef = useRef(false);
+  const safeModeAutoRepairAttemptsRef = useRef(0);
 
   const collectProjectState = () => ({
     projectName: projectName.trim(),
@@ -1083,15 +1086,29 @@ function App() {
       return;
     }
 
+    if (auto && safeModeAutoRepairAttemptsRef.current >= SAFE_MODE_AUTO_REPAIR_MAX_TRIES) {
+      setSafeModeRepairFailed(true);
+      setIssueReportFeedback('Die automatische Reparatur hat nicht geklappt. Bitte App reparieren.');
+      return;
+    }
+
     setIsAutoRepairing(true);
-    setSafeModeRepairFailed(false);
+    if (!auto) {
+      setSafeModeCanSendSupport(false);
+    }
     setIssueReportFeedback(auto ? 'Wir beheben das gerade automatisch ...' : 'Wir versuchen die Reparatur erneut ...');
     setIssueReportTechnical('');
+    if (auto) {
+      safeModeAutoRepairAttemptsRef.current += 1;
+    }
     try {
       await runSystemDiagnostics();
       const ok = await restartSystemServices();
       if (!ok) {
         setSafeModeRepairFailed(true);
+        if (!auto) {
+          setSafeModeCanSendSupport(true);
+        }
       }
     } finally {
       setIsAutoRepairing(false);
@@ -1557,14 +1574,42 @@ function App() {
 
   useEffect(() => {
     if (!safeMode) {
-      safeModeAutoRepairTriggeredRef.current = false;
       setSafeModeRepairFailed(false);
+      setSafeModeCanSendSupport(false);
+      safeModeAutoRepairAttemptsRef.current = 0;
       return;
     }
-    if (safeModeAutoRepairTriggeredRef.current) return;
-    safeModeAutoRepairTriggeredRef.current = true;
-    repairAppNow({ auto: true }).catch(() => {});
-  }, [safeMode]);
+    if (
+      isAutoRepairing ||
+      isRunningDiagnostics ||
+      isRestartingServices ||
+      isReportingIssue ||
+      isSendingSupportPackage
+    ) {
+      return;
+    }
+    if (safeModeRepairFailed) return;
+    if (safeModeAutoRepairAttemptsRef.current >= SAFE_MODE_AUTO_REPAIR_MAX_TRIES) {
+      setSafeModeRepairFailed(true);
+      setIssueReportFeedback('Die automatische Reparatur hat nicht geklappt. Bitte App reparieren.');
+      return;
+    }
+    const delay = safeModeAutoRepairAttemptsRef.current > 0
+      ? SAFE_MODE_AUTO_REPAIR_RETRY_DELAY_MS
+      : 0;
+    const timer = setTimeout(() => {
+      repairAppNow({ auto: true }).catch(() => {});
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [
+    safeMode,
+    safeModeRepairFailed,
+    isAutoRepairing,
+    isRunningDiagnostics,
+    isRestartingServices,
+    isReportingIssue,
+    isSendingSupportPackage
+  ]);
 
   useEffect(() => {
     if (!safeMode) return;
@@ -2354,9 +2399,11 @@ function App() {
   const projectNameInHeader = projectName.trim() || (currentProjectId ? 'Unbenanntes Projekt' : '');
   const appFooterYear = new Date().getFullYear();
   const safeModeHeadline = 'Flider ist voruebergehend nicht verfuegbar';
-  const safeModeDescription = safeModeRepairFailed
-    ? 'Die automatische Reparatur hat nicht geklappt. Du kannst es erneut versuchen.'
-    : 'Wir beheben das gerade automatisch.';
+  const safeModeDescription = safeModeCanSendSupport
+    ? 'Die Reparatur war nicht erfolgreich. Du kannst das Problem jetzt senden.'
+    : safeModeRepairFailed
+      ? 'Die automatische Reparatur hat nicht geklappt. Bitte App reparieren.'
+      : 'Wir beheben das gerade automatisch.';
   const isSafeModeBusy =
     isAutoRepairing || isRunningDiagnostics || isRestartingServices || isReportingIssue || isSendingSupportPackage;
   const safeModePrimaryLabel = isSafeModeBusy ? 'App wird repariert ...' : 'App reparieren';
@@ -2386,26 +2433,32 @@ function App() {
           </div>
 
           <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-            <button
-              type="button"
-              onClick={repairAppNow}
-              disabled={isSafeModeBusy}
-              style={{
-                background: '#ff4d4f',
-                border: 'none',
-                color: 'white',
-                padding: '0.5rem 0.92rem',
-                borderRadius: '8px',
-                fontSize: '0.84rem',
-                fontWeight: 600,
-                cursor: isSafeModeBusy ? 'not-allowed' : 'pointer',
-                opacity: isSafeModeBusy ? 0.65 : 1
-              }}
-            >
-              {safeModePrimaryLabel}
-            </button>
+            {safeModeRepairFailed ? (
+              <button
+                type="button"
+                onClick={repairAppNow}
+                disabled={isSafeModeBusy}
+                style={{
+                  background: '#ff4d4f',
+                  border: 'none',
+                  color: 'white',
+                  padding: '0.5rem 0.92rem',
+                  borderRadius: '8px',
+                  fontSize: '0.84rem',
+                  fontWeight: 600,
+                  cursor: isSafeModeBusy ? 'not-allowed' : 'pointer',
+                  opacity: isSafeModeBusy ? 0.65 : 1
+                }}
+              >
+                {safeModePrimaryLabel}
+              </button>
+            ) : (
+              <span style={{ fontSize: '0.78rem', color: '#f3c7c7', alignSelf: 'center' }}>
+                Automatische Reparatur laeuft ...
+              </span>
+            )}
 
-            {safeModeRepairFailed && (
+            {safeModeCanSendSupport && (
               <button
                 type="button"
                 onClick={sendSupportPackage}
@@ -2423,6 +2476,16 @@ function App() {
               >
                 {isSendingSupportPackage ? 'Problem wird gesendet ...' : 'Problem senden'}
               </button>
+            )}
+
+            {!safeModeCanSendSupport && safeModeRepairFailed && (
+              <span style={{
+                fontSize: '0.76rem',
+                color: '#f3c7c7',
+                alignSelf: 'center',
+              }}>
+                Wenn es erneut fehlschlaegt, kannst du danach ein Problem senden.
+              </span>
             )}
           </div>
 

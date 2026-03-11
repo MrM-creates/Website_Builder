@@ -28,9 +28,11 @@ Zugehoeriger Error-Code-Katalog:
 
 ## 3.1 Primaerer Kanal
 
-- In-App Buttons: `Problem melden` und `Support-Paket senden`
-- `Problem melden`: speichert Diagnosebericht lokal unter `.flatsite/reports`
-- `Support-Paket senden`: erstellt zusaetzlich ein Bundle unter `.flatsite/support-bundles`
+- In-App Safe Mode arbeitet **zuerst automatisch** (Auto-Reparatur im Hintergrund)
+- Nur wenn Auto-Reparatur fehlschlaegt:
+  - `App reparieren` (manueller Wiederholungsversuch)
+  - danach optional `Problem senden`
+- `Problem senden`: erstellt Bericht/Bundle lokal (`.flatsite/reports`, `.flatsite/support-bundles`)
   und versendet es automatisch, falls `FLIDER_SUPPORT_WEBHOOK_URL` gesetzt ist
 
 ## 3.2 Sekundaerer Kanal
@@ -57,8 +59,9 @@ Beim Start laeuft ein kurzer Check (1-2 Sekunden):
 
 Wenn ein Check fehlschlaegt:
 
-- Kein Crash, sondern `Safe Mode` Screen
-- Aktionen: `Dienste neu starten`, `Problem melden`, `Diagnose anzeigen`
+- Kein Crash, sondern `Safe Mode` Hinweis
+- Auto-Reparatur startet automatisch
+- Nur bei Misserfolg werden manuelle Aktionen eingeblendet
 
 ## 5. Severity und SLA
 
@@ -76,10 +79,9 @@ Wenn ein Check fehlschlaegt:
 
 ## 6. L1-Checkliste (User/App)
 
-1. `Diagnose starten`
-2. `Dienste neu starten`
-3. Fehler reproduzieren
-4. Falls weiter fehlerhaft: `Problem melden`
+1. Safe Mode kurz abwarten (Auto-Reparatur)
+2. Falls noetig: `App reparieren`
+3. Falls weiter fehlerhaft: `Problem senden`
 
 Pflichtdaten im Report:
 
