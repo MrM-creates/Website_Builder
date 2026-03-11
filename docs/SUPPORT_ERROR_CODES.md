@@ -194,6 +194,24 @@ Optional:
   - L2: Schreibrechte im `.flatsite`-Ordner pruefen
   - L3: Report-Pipeline fixen
 
+- `SUPPORT_BUNDLE_SAVE_FAILED` (P2)
+  - Trigger: Support-Paket (Report + Log-Bundle) konnte nicht erstellt werden
+  - L1: Erneut versuchen
+  - L2: Schreibrechte im `.flatsite`-Ordner pruefen
+  - L3: Bundle-Pipeline fixen
+
+- `SUPPORT_DELIVERY_FAILED` (P2)
+  - Trigger: Support-Ziel (Webhook) antwortet nicht oder liefert Fehler
+  - L1: Paket lokal verwenden und manuell weitergeben
+  - L2: `FLIDER_SUPPORT_WEBHOOK_URL`/Netzwerk pruefen
+  - L3: Delivery-Transport fixen
+
+- `SUPPORT_DELIVERY_NOT_CONFIGURED` (P3)
+  - Trigger: Kein Support-Ziel (`FLIDER_SUPPORT_WEBHOOK_URL`) konfiguriert
+  - L1: Lokales Paket manuell weitergeben
+  - L2: Support-Ziel konfigurieren
+  - L3: Optionales Routing erweitern (Mail/Ticket)
+
 ## 5.7 Preview/SEO
 
 - `PREVIEW_BLANK` (P1)

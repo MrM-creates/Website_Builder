@@ -13,6 +13,7 @@ try {
     runtime: 'electron',
     restartServices: () => ipcRenderer.invoke('flider:restart-services'),
     saveIssueReport: (payload) => ipcRenderer.invoke('flider:save-issue-report', payload),
+    saveSupportBundle: (payload) => ipcRenderer.invoke('flider:save-support-bundle', payload),
     bridgeStatus: () => ipcRenderer.invoke('flider:bridge-status')
   });
 } catch {

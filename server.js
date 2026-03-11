@@ -37,6 +37,8 @@ const ACTIVE_PROJECT_FILE = path.join(FLATSITE_DIR, 'active-project.json');
 const REPAIR_LOG_FILE = path.join(FLATSITE_DIR, 'repair-events.log');
 const ADMIN_CREDENTIALS_FILE = path.join(FLATSITE_DIR, 'admin-credentials.json');
 const SUPPORT_REPORTS_DIR = path.join(FLATSITE_DIR, 'reports');
+const SUPPORT_BUNDLES_DIR = path.join(FLATSITE_DIR, 'support-bundles');
+const SUPPORT_WEBHOOK_URL = String(process.env.FLIDER_SUPPORT_WEBHOOK_URL || '').trim();
 const PROJECT_RECOVERY_DIR_NAME = '_recovery';
 const LIVE_CONTENT_DIR = path.join(KIRBY_ROOT, 'content');
 const LIVE_CUSTOM_CSS_PATH = path.join(KIRBY_ROOT, 'assets', 'css', 'custom.css');
@@ -3311,6 +3313,270 @@ const pickServiceHealth = (payload = {}) => {
     };
 };
 
+const readFileTail = (filePath, maxBytes = 180000) => {
+    try {
+        const stat = fs.statSync(filePath);
+        const size = Number(stat.size || 0);
+        if (size <= 0) return '';
+
+        const bytesToRead = Math.min(size, Math.max(1024, Number(maxBytes || 0) || 180000));
+        const start = Math.max(0, size - bytesToRead);
+        const fd = fs.openSync(filePath, 'r');
+        try {
+            const buffer = Buffer.alloc(bytesToRead);
+            const read = fs.readSync(fd, buffer, 0, bytesToRead, start);
+            return buffer.slice(0, read).toString('utf-8');
+        } finally {
+            fs.closeSync(fd);
+        }
+    } catch {
+        return '';
+    }
+};
+
+const runtimePidSnapshot = () => {
+    const snapshot = {};
+    try {
+        if (!fs.existsSync(RUNTIME_PIDS_DIR)) return snapshot;
+        for (const entry of fs.readdirSync(RUNTIME_PIDS_DIR)) {
+            if (!entry.endsWith('.pid')) continue;
+            const filePath = path.join(RUNTIME_PIDS_DIR, entry);
+            const raw = String(fs.readFileSync(filePath, 'utf-8') || '').trim();
+            const pid = Number(raw);
+            let alive = false;
+            if (Number.isInteger(pid) && pid > 0) {
+                try {
+                    process.kill(pid, 0);
+                    alive = true;
+                } catch {
+                    alive = false;
+                }
+            }
+            snapshot[entry] = {
+                pid: Number.isInteger(pid) && pid > 0 ? pid : null,
+                alive
+            };
+        }
+    } catch {
+        // best effort only
+    }
+    return snapshot;
+};
+
+const getStackLogPath = () => {
+    const candidates = [
+        path.join(FLIDER_RUNTIME_ROOT, '.runtime', 'logs', 'stack.log'),
+        path.join(APP_ROOT, '.runtime', 'logs', 'stack.log')
+    ];
+    for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) return candidate;
+    }
+    return candidates[0];
+};
+
+const buildDiagnosticReportObject = (payload = {}) => {
+    const body = payload && typeof payload === 'object' ? payload : {};
+    const incidentInput = body.incident && typeof body.incident === 'object' ? body.incident : {};
+    const appInput = body.app && typeof body.app === 'object' ? body.app : {};
+    const envInput = body.environment && typeof body.environment === 'object' ? body.environment : {};
+    const projectInput = body.project && typeof body.project === 'object' ? body.project : {};
+    const diagnosticsInput = body.diagnostics && typeof body.diagnostics === 'object' ? body.diagnostics : {};
+
+    const reportId =
+        (typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : crypto.randomBytes(16).toString('hex'));
+    const timestamp = new Date().toISOString();
+    const projectPath = String(projectInput.path || '').trim();
+
+    const report = {
+        schemaVersion: '1.0',
+        reportType: 'diagnostic-report',
+        reportId,
+        timestamp,
+        app: {
+            name: String(appInput.name || APP_NAME),
+            version: String(appInput.version || APP_VERSION),
+            build: String(appInput.build || '').trim() || null,
+            channel: String(appInput.channel || '').trim() || null
+        },
+        environment: {
+            os: String(envInput.os || os.platform()),
+            arch: String(envInput.arch || os.arch()),
+            runtime: String(envInput.runtime || 'desktop'),
+            locale: String(envInput.locale || '').trim() || null,
+            timezone: String(envInput.timezone || '').trim() || null
+        },
+        project: {
+            id: String(projectInput.id || '').trim() || 'unknown',
+            name: String(projectInput.name || '').trim() || null,
+            path: projectPath || APP_ROOT,
+            signature: String(projectInput.signature || '').trim() || null,
+            lastSavedAt: String(projectInput.lastSavedAt || '').trim() || null
+        },
+        incident: {
+            errorCode: sanitizeErrorCode(incidentInput.errorCode),
+            severity: normalizeSeverity(incidentInput.severity),
+            message: String(incidentInput.message || 'Problem gemeldet').trim() || 'Problem gemeldet',
+            httpStatus: Number.isFinite(Number(incidentInput.httpStatus))
+                ? Number(incidentInput.httpStatus)
+                : null,
+            requestId: String(incidentInput.requestId || '').trim() || null,
+            startedAt: String(incidentInput.startedAt || '').trim() || null,
+            reproSteps: normalizeStringArray(incidentInput.reproSteps, ['Problem in App gemeldet'])
+        },
+        services: pickServiceHealth(diagnosticsInput.health || {}),
+        recovery: {
+            suggestedSteps: normalizeStringArray(diagnosticsInput.recoverySteps, []),
+            actionsTried: Array.isArray(diagnosticsInput.actionsTried)
+                ? diagnosticsInput.actionsTried.slice(0, 20)
+                : []
+        },
+        attachments: []
+    };
+
+    return {
+        report,
+        reportId,
+        summary: `[${report.incident.errorCode}/${report.incident.severity}] ${report.incident.message} (${report.timestamp})`
+    };
+};
+
+const writeDiagnosticReport = (payload = {}) => {
+    ensureFlatsiteDir();
+    fs.mkdirSync(SUPPORT_REPORTS_DIR, { recursive: true });
+    const { report, reportId, summary } = buildDiagnosticReportObject(payload);
+    const filename = `report-${nowCompactTimestamp()}-${String(reportId).slice(0, 8)}.json`;
+    const reportPath = path.join(SUPPORT_REPORTS_DIR, filename);
+    writeJsonFile(reportPath, report);
+    return { report, reportId, reportPath, summary };
+};
+
+const createSupportBundle = ({
+    report,
+    reportPath = '',
+    diagnostics = {}
+} = {}) => {
+    ensureFlatsiteDir();
+    fs.mkdirSync(SUPPORT_BUNDLES_DIR, { recursive: true });
+
+    const bundleId =
+        (typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : crypto.randomBytes(16).toString('hex'));
+    const bundleTimestamp = new Date().toISOString();
+
+    const stackLogPath = getStackLogPath();
+    const stackLogTail = readFileTail(stackLogPath, 220000);
+    const stackLogLines = stackLogTail ? stackLogTail.split(/\r?\n/).length : 0;
+    const reportExists = reportPath ? fs.existsSync(reportPath) : false;
+
+    const bundle = {
+        schemaVersion: '1.0',
+        bundleType: 'support-bundle',
+        bundleId,
+        createdAt: bundleTimestamp,
+        app: {
+            name: APP_NAME,
+            version: APP_VERSION
+        },
+        report: report
+            ? {
+                reportId: String(report.reportId || '').trim() || null,
+                reportPath: reportPath || null,
+                errorCode: String(report?.incident?.errorCode || '').trim() || null,
+                severity: String(report?.incident?.severity || '').trim() || null,
+                message: String(report?.incident?.message || '').trim() || null,
+                reportAvailable: reportExists
+            }
+            : null,
+        diagnostics: {
+            health: diagnostics?.health || null,
+            preflight: diagnostics?.preflight || null,
+            issues: Array.isArray(diagnostics?.issues) ? diagnostics.issues : [],
+            recoverySteps: Array.isArray(diagnostics?.recoverySteps) ? diagnostics.recoverySteps : []
+        },
+        runtime: {
+            runtimeRoot: FLIDER_RUNTIME_ROOT,
+            stateDir: FLATSITE_DIR,
+            pidSnapshot: runtimePidSnapshot(),
+            stackLogPath,
+            stackLogLines,
+            stackLogTail
+        }
+    };
+
+    const filename = `support-${nowCompactTimestamp()}-${String(bundleId).slice(0, 8)}.json`;
+    const bundlePath = path.join(SUPPORT_BUNDLES_DIR, filename);
+    writeJsonFile(bundlePath, bundle);
+    return { bundle, bundleId, bundlePath };
+};
+
+const sendSupportWebhook = async ({ report, reportPath, bundle, bundlePath }) => {
+    if (!SUPPORT_WEBHOOK_URL) {
+        return {
+            configured: false,
+            sent: false,
+            status: 'not-configured',
+            error: 'Kein Support-Ziel konfiguriert'
+        };
+    }
+
+    if (typeof fetch !== 'function') {
+        return {
+            configured: true,
+            sent: false,
+            status: 'failed',
+            error: 'Fetch API im Runtime nicht verfuegbar'
+        };
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+        const response = await fetch(SUPPORT_WEBHOOK_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                sentAt: new Date().toISOString(),
+                app: { name: APP_NAME, version: APP_VERSION },
+                reportPath: reportPath || null,
+                bundlePath: bundlePath || null,
+                report: report || null,
+                bundle: bundle || null
+            }),
+            signal: controller.signal
+        });
+
+        if (!response.ok) {
+            return {
+                configured: true,
+                sent: false,
+                status: 'failed',
+                error: `Support-Ziel HTTP ${response.status}`
+            };
+        }
+
+        return {
+            configured: true,
+            sent: true,
+            status: 'sent',
+            error: null
+        };
+    } catch (error) {
+        return {
+            configured: true,
+            sent: false,
+            status: 'failed',
+            error: String(error?.message || 'Support-Senden fehlgeschlagen')
+        };
+    } finally {
+        clearTimeout(timer);
+    }
+};
+
 app.get('/api/system/health', async (req, res) => {
     try {
         const [backend, frontend, kirby] = await Promise.all([
@@ -3542,74 +3808,8 @@ app.post('/api/system/restart', express.json(), async (req, res) => {
 
 app.post('/api/system/report-issue', express.json(), async (req, res) => {
     try {
-        ensureFlatsiteDir();
-        fs.mkdirSync(SUPPORT_REPORTS_DIR, { recursive: true });
-
-        const body = req.body && typeof req.body === 'object' ? req.body : {};
-        const incidentInput = body.incident && typeof body.incident === 'object' ? body.incident : {};
-        const appInput = body.app && typeof body.app === 'object' ? body.app : {};
-        const envInput = body.environment && typeof body.environment === 'object' ? body.environment : {};
-        const projectInput = body.project && typeof body.project === 'object' ? body.project : {};
-        const diagnosticsInput = body.diagnostics && typeof body.diagnostics === 'object' ? body.diagnostics : {};
-
-        const reportId =
-            (typeof crypto.randomUUID === 'function'
-                ? crypto.randomUUID()
-                : crypto.randomBytes(16).toString('hex'));
-        const timestamp = new Date().toISOString();
-        const projectPath = String(projectInput.path || '').trim();
-
-        const report = {
-            schemaVersion: '1.0',
-            reportType: 'diagnostic-report',
-            reportId,
-            timestamp,
-            app: {
-                name: String(appInput.name || APP_NAME),
-                version: String(appInput.version || APP_VERSION),
-                build: String(appInput.build || '').trim() || null,
-                channel: String(appInput.channel || '').trim() || null
-            },
-            environment: {
-                os: String(envInput.os || os.platform()),
-                arch: String(envInput.arch || os.arch()),
-                runtime: String(envInput.runtime || 'desktop'),
-                locale: String(envInput.locale || '').trim() || null,
-                timezone: String(envInput.timezone || '').trim() || null
-            },
-            project: {
-                id: String(projectInput.id || '').trim() || 'unknown',
-                name: String(projectInput.name || '').trim() || null,
-                path: projectPath || APP_ROOT,
-                signature: String(projectInput.signature || '').trim() || null,
-                lastSavedAt: String(projectInput.lastSavedAt || '').trim() || null
-            },
-            incident: {
-                errorCode: sanitizeErrorCode(incidentInput.errorCode),
-                severity: normalizeSeverity(incidentInput.severity),
-                message: String(incidentInput.message || 'Problem gemeldet').trim() || 'Problem gemeldet',
-                httpStatus: Number.isFinite(Number(incidentInput.httpStatus))
-                    ? Number(incidentInput.httpStatus)
-                    : null,
-                requestId: String(incidentInput.requestId || '').trim() || null,
-                startedAt: String(incidentInput.startedAt || '').trim() || null,
-                reproSteps: normalizeStringArray(incidentInput.reproSteps, ['Problem in App gemeldet'])
-            },
-            services: pickServiceHealth(diagnosticsInput.health || {}),
-            recovery: {
-                suggestedSteps: normalizeStringArray(diagnosticsInput.recoverySteps, []),
-                actionsTried: Array.isArray(diagnosticsInput.actionsTried)
-                    ? diagnosticsInput.actionsTried.slice(0, 20)
-                    : []
-            },
-            attachments: []
-        };
-
-        const filename = `report-${nowCompactTimestamp()}-${String(reportId).slice(0, 8)}.json`;
-        const reportPath = path.join(SUPPORT_REPORTS_DIR, filename);
-        writeJsonFile(reportPath, report);
-
-        const summary = `[${report.incident.errorCode}/${report.incident.severity}] ${report.incident.message} (${report.timestamp})`;
+        const payload = req.body && typeof req.body === 'object' ? req.body : {};
+        const { reportId, reportPath, summary } = writeDiagnosticReport(payload);
 
         res.json({
             success: true,
@@ -3623,6 +3823,51 @@ app.post('/api/system/report-issue', express.json(), async (req, res) => {
             success: false,
             errorCode: 'SUPPORT_REPORT_SAVE_FAILED',
             error: String(error?.message || 'Problembericht konnte nicht gespeichert werden')
+        });
+    }
+});
+
+app.post('/api/system/support-package', express.json(), async (req, res) => {
+    try {
+        const payload = req.body && typeof req.body === 'object' ? req.body : {};
+        const diagnosticsInput =
+            payload.diagnostics && typeof payload.diagnostics === 'object'
+                ? payload.diagnostics
+                : {};
+
+        const reportRecord = writeDiagnosticReport(payload);
+        const bundleRecord = createSupportBundle({
+            report: reportRecord.report,
+            reportPath: reportRecord.reportPath,
+            diagnostics: diagnosticsInput
+        });
+        const delivery = await sendSupportWebhook({
+            report: reportRecord.report,
+            reportPath: reportRecord.reportPath,
+            bundle: bundleRecord.bundle,
+            bundlePath: bundleRecord.bundlePath
+        });
+
+        res.json({
+            success: true,
+            reportId: reportRecord.reportId,
+            reportPath: reportRecord.reportPath,
+            summary: reportRecord.summary,
+            bundleId: bundleRecord.bundleId,
+            bundlePath: bundleRecord.bundlePath,
+            delivery,
+            deliveryCode: delivery.sent
+                ? null
+                : (delivery.configured ? 'SUPPORT_DELIVERY_FAILED' : 'SUPPORT_DELIVERY_NOT_CONFIGURED'),
+            message: delivery.sent
+                ? 'Support-Paket wurde erstellt und gesendet'
+                : 'Support-Paket wurde lokal erstellt'
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            errorCode: 'SUPPORT_BUNDLE_SAVE_FAILED',
+            error: String(error?.message || 'Support-Paket konnte nicht erstellt werden')
         });
     }
 });

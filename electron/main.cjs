@@ -146,6 +146,77 @@ const supportReportsDir = () => {
   return path.join(PROJECT_ROOT, '.flatsite', 'reports');
 };
 
+const supportBundlesDir = () => {
+  if (desktopRuntime?.stateDir) {
+    return path.join(desktopRuntime.stateDir, 'support-bundles');
+  }
+  return path.join(PROJECT_ROOT, '.flatsite', 'support-bundles');
+};
+
+const runtimePidsDir = () => {
+  if (desktopRuntime?.runtimeRoot) {
+    return path.join(desktopRuntime.runtimeRoot, '.runtime', 'pids');
+  }
+  return path.join(PROJECT_ROOT, '.runtime', 'pids');
+};
+
+const runtimeStackLogPath = () => {
+  if (desktopRuntime?.runtimeRoot) {
+    return path.join(desktopRuntime.runtimeRoot, '.runtime', 'logs', 'stack.log');
+  }
+  return path.join(PROJECT_ROOT, '.runtime', 'logs', 'stack.log');
+};
+
+const readFileTail = (filePath, maxBytes = 200000) => {
+  try {
+    const stat = fs.statSync(filePath);
+    const total = Number(stat.size || 0);
+    if (total <= 0) return '';
+    const bytes = Math.min(total, Math.max(1024, Number(maxBytes || 0)));
+    const start = Math.max(0, total - bytes);
+    const fd = fs.openSync(filePath, 'r');
+    try {
+      const buffer = Buffer.alloc(bytes);
+      const read = fs.readSync(fd, buffer, 0, bytes, start);
+      return buffer.slice(0, read).toString('utf-8');
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return '';
+  }
+};
+
+const runtimePidSnapshot = () => {
+  const dir = runtimePidsDir();
+  const out = {};
+  try {
+    if (!fs.existsSync(dir)) return out;
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.endsWith('.pid')) continue;
+      const filePath = path.join(dir, name);
+      const raw = String(fs.readFileSync(filePath, 'utf-8') || '').trim();
+      const pid = Number(raw);
+      let alive = false;
+      if (Number.isInteger(pid) && pid > 0) {
+        try {
+          process.kill(pid, 0);
+          alive = true;
+        } catch {
+          alive = false;
+        }
+      }
+      out[name] = {
+        pid: Number.isInteger(pid) && pid > 0 ? pid : null,
+        alive
+      };
+    }
+  } catch {
+    return out;
+  }
+  return out;
+};
+
 const writeLocalIssueReport = (payload = {}) => {
   const reportDir = supportReportsDir();
   fs.mkdirSync(reportDir, { recursive: true });
@@ -191,6 +262,63 @@ const writeLocalIssueReport = (payload = {}) => {
     reportId,
     reportPath,
     summary: `[${report.incident.errorCode}/${report.incident.severity}] ${report.incident.message} (${report.timestamp})`
+  };
+};
+
+const writeLocalSupportBundle = (payload = {}) => {
+  const reportResult = writeLocalIssueReport(payload || {});
+  let report = null;
+  try {
+    report = JSON.parse(fs.readFileSync(reportResult.reportPath, 'utf-8'));
+  } catch {
+    report = null;
+  }
+
+  const bundleDir = supportBundlesDir();
+  fs.mkdirSync(bundleDir, { recursive: true });
+
+  const bundleId = typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : crypto.randomBytes(16).toString('hex');
+  const stackLogPath = runtimeStackLogPath();
+  const stackLogTail = readFileTail(stackLogPath, 220000);
+
+  const bundle = {
+    schemaVersion: '1.0',
+    bundleType: 'support-bundle',
+    bundleId,
+    createdAt: new Date().toISOString(),
+    app: {
+      name: 'Flider',
+      version: app.getVersion()
+    },
+    report: report
+      ? {
+          reportId: String(report.reportId || ''),
+          reportPath: reportResult.reportPath,
+          errorCode: String(report?.incident?.errorCode || ''),
+          severity: String(report?.incident?.severity || ''),
+          message: String(report?.incident?.message || '')
+        }
+      : null,
+    diagnostics: payload?.diagnostics || null,
+    runtime: {
+      runtimeRoot: desktopRuntime?.runtimeRoot || PROJECT_ROOT,
+      stateDir: desktopRuntime?.stateDir || path.join(PROJECT_ROOT, '.flatsite'),
+      pidSnapshot: runtimePidSnapshot(),
+      stackLogPath,
+      stackLogTail
+    }
+  };
+
+  const filename = `support-${nowCompactTimestamp()}-${String(bundleId).slice(0, 8)}.json`;
+  const bundlePath = path.join(bundleDir, filename);
+  fs.writeFileSync(bundlePath, JSON.stringify(bundle, null, 2), 'utf-8');
+
+  return {
+    ...reportResult,
+    bundleId,
+    bundlePath
   };
 };
 
@@ -398,6 +526,22 @@ ipcMain.handle('flider:save-issue-report', async (_event, payload) => {
     return {
       success: false,
       error: String(error?.message || 'Problembericht konnte nicht gespeichert werden')
+    };
+  }
+});
+
+ipcMain.handle('flider:save-support-bundle', async (_event, payload) => {
+  try {
+    const result = writeLocalSupportBundle(payload || {});
+    return {
+      success: true,
+      ...result,
+      message: 'Support-Paket wurde lokal gespeichert'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: String(error?.message || 'Support-Paket konnte nicht gespeichert werden')
     };
   }
 });

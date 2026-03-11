@@ -28,9 +28,10 @@ Zugehoeriger Error-Code-Katalog:
 
 ## 3.1 Primaerer Kanal
 
-- In-App Button: `Problem melden`
-- App erzeugt ein Diagnosepaket und speichert es lokal unter `.flatsite/reports`
-- Optional (naechster Ausbau): Versand an Support-Adresse, z.B. `support@flider.app`
+- In-App Buttons: `Problem melden` und `Support-Paket senden`
+- `Problem melden`: speichert Diagnosebericht lokal unter `.flatsite/reports`
+- `Support-Paket senden`: erstellt zusaetzlich ein Bundle unter `.flatsite/support-bundles`
+  und versendet es automatisch, falls `FLIDER_SUPPORT_WEBHOOK_URL` gesetzt ist
 
 ## 3.2 Sekundaerer Kanal
 
@@ -39,6 +40,7 @@ Zugehoeriger Error-Code-Katalog:
 ## 3.3 Wenn Versand fehlschlaegt
 
 - Diagnosepaket lokal speichern
+- Support-Paket lokal speichern (`.flatsite/support-bundles`)
 - `Diagnose kopieren` (Kurztext) fuer manuelle Mail
 - Hinweis: Bei komplett ausgefallenem Backend nutzt die Desktop-App einen lokalen Fallback
   (Electron-Bridge) fuer `Dienste neu starten` und `Problem melden`.

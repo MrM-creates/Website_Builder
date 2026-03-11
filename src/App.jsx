@@ -411,16 +411,21 @@ function App() {
   const [projectError, setProjectError] = useState('');
   const [safeMode, setSafeMode] = useState(false);
   const [backendFailureCount, setBackendFailureCount] = useState(0);
+  const [isAutoRepairing, setIsAutoRepairing] = useState(false);
+  const [safeModeRepairFailed, setSafeModeRepairFailed] = useState(false);
   const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
   const [isRestartingServices, setIsRestartingServices] = useState(false);
   const [isReportingIssue, setIsReportingIssue] = useState(false);
+  const [isSendingSupportPackage, setIsSendingSupportPackage] = useState(false);
   const [issueReportFeedback, setIssueReportFeedback] = useState('');
+  const [issueReportTechnical, setIssueReportTechnical] = useState('');
   const [diagnostics, setDiagnostics] = useState(null);
   const [desktopBridgeStatus, setDesktopBridgeStatus] = useState({
     checked: false,
     available: false,
     hasRestart: false,
     hasReport: false,
+    hasSupportBundle: false,
     hasStatus: false,
     error: '',
     details: null,
@@ -435,6 +440,7 @@ function App() {
   const isResettingProjectRef = useRef(false);
   const saveQueueRef = useRef(Promise.resolve());
   const startupPreflightDoneRef = useRef(false);
+  const safeModeAutoRepairTriggeredRef = useRef(false);
 
   const collectProjectState = () => ({
     projectName: projectName.trim(),
@@ -903,6 +909,7 @@ function App() {
       available: Boolean(bridge),
       hasRestart: typeof bridge?.restartServices === 'function',
       hasReport: typeof bridge?.saveIssueReport === 'function',
+      hasSupportBundle: typeof bridge?.saveSupportBundle === 'function',
       hasStatus: typeof bridge?.bridgeStatus === 'function',
       error: '',
       details: null,
@@ -972,9 +979,11 @@ function App() {
   };
 
   const restartSystemServices = async () => {
-    if (isRestartingServices) return;
+    if (isRestartingServices) return false;
     setIsRestartingServices(true);
     setIssueReportFeedback('');
+    setIssueReportTechnical('');
+    let recovered = false;
 
     try {
       let restartAccepted = false;
@@ -1022,15 +1031,12 @@ function App() {
         } catch {
           // ignore diagnostics failures
         }
-        setIssueReportFeedback(
-          details
-            ? `Neustart konnte nicht gestartet werden: ${details}`
-            : 'Neustart konnte nicht gestartet werden. Bitte App kurz neu oeffnen.'
-        );
-        return;
+        setIssueReportFeedback('Die Reparatur konnte nicht abgeschlossen werden.');
+        if (details) setIssueReportTechnical(details);
+        return false;
       }
 
-      setIssueReportFeedback('Neustart wurde gestartet. Dienste werden geprueft ...');
+      setIssueReportFeedback('Wir reparieren die App ...');
 
       // Wait briefly for restart process to kick in.
       await new Promise((resolve) => setTimeout(resolve, 1800));
@@ -1055,80 +1061,116 @@ function App() {
         if (allUp) {
           setSafeMode(false);
           setBackendFailureCount(0);
-          setIssueReportFeedback('Dienste laufen wieder stabil.');
+          setIssueReportFeedback('App laeuft wieder stabil.');
+          setIssueReportTechnical('');
+          recovered = true;
           break;
         }
 
         await new Promise((resolve) => setTimeout(resolve, 1200));
       }
+      if (!recovered) {
+        setIssueReportFeedback('Die automatische Reparatur hat nicht geklappt.');
+      }
+      return recovered;
     } finally {
       setIsRestartingServices(false);
     }
   };
 
+  const repairAppNow = async ({ auto = false } = {}) => {
+    if (isAutoRepairing || isRestartingServices || isRunningDiagnostics || isReportingIssue || isSendingSupportPackage) {
+      return;
+    }
+
+    setIsAutoRepairing(true);
+    setSafeModeRepairFailed(false);
+    setIssueReportFeedback(auto ? 'Wir beheben das gerade automatisch ...' : 'Wir versuchen die Reparatur erneut ...');
+    setIssueReportTechnical('');
+    try {
+      await runSystemDiagnostics();
+      const ok = await restartSystemServices();
+      if (!ok) {
+        setSafeModeRepairFailed(true);
+      }
+    } finally {
+      setIsAutoRepairing(false);
+    }
+  };
+
   const reportSystemIssue = async () => {
-    if (isReportingIssue) return;
+    if (isReportingIssue || isSendingSupportPackage) return;
     setIsReportingIssue(true);
     setIssueReportFeedback('');
+    setIssueReportTechnical('');
 
     try {
-      let latestDiagnostics = diagnostics;
-      try {
-        const { data } = await fetchJsonWithTimeout(`${BACKEND_URL}/api/system/preflight`, {}, 3500);
-        if (data) {
-          latestDiagnostics = {
-            source: 'manual-report',
-            health: data?.health || diagnostics?.health || null,
-            preflight: data?.preflight || diagnostics?.preflight || null,
-            issues: Array.isArray(data?.issues) ? data.issues : (Array.isArray(diagnostics?.issues) ? diagnostics.issues : []),
-            recoverySteps: Array.isArray(data?.recoverySteps)
-              ? data.recoverySteps
-              : (Array.isArray(diagnostics?.recoverySteps) ? diagnostics.recoverySteps : []),
-          };
-          setDiagnostics(latestDiagnostics);
+      const collectLatestDiagnostics = async (sourceLabel = 'manual-report') => {
+        let latest = diagnostics;
+        try {
+          const { data } = await fetchJsonWithTimeout(`${BACKEND_URL}/api/system/preflight`, {}, 3500);
+          if (data) {
+            latest = {
+              source: sourceLabel,
+              health: data?.health || diagnostics?.health || null,
+              preflight: data?.preflight || diagnostics?.preflight || null,
+              issues: Array.isArray(data?.issues) ? data.issues : (Array.isArray(diagnostics?.issues) ? diagnostics.issues : []),
+              recoverySteps: Array.isArray(data?.recoverySteps)
+                ? data.recoverySteps
+                : (Array.isArray(diagnostics?.recoverySteps) ? diagnostics.recoverySteps : []),
+            };
+            setDiagnostics(latest);
+          }
+        } catch {
+          // keep existing diagnostics
         }
-      } catch {
-        // keep existing diagnostics
-      }
-
-      const issues = Array.isArray(latestDiagnostics?.issues) ? latestDiagnostics.issues : [];
-      const primaryIssue = issues[0] || {};
-
-      const payload = {
-        app: {
-          name: BRAND_NAME,
-          version: String(import.meta.env?.VITE_APP_VERSION || import.meta.env?.MODE || 'dev'),
-          channel: String(import.meta.env?.MODE || 'dev'),
-        },
-        environment: {
-          os: navigator?.userAgent || 'unknown',
-          arch: navigator?.platform || 'unknown',
-          runtime: 'desktop',
-          locale: navigator?.language || null,
-          timezone: Intl?.DateTimeFormat?.().resolvedOptions?.().timeZone || null,
-        },
-        project: {
-          id: currentProjectId || 'unknown',
-          name: projectName || null,
-          path: currentProjectPath || '',
-          signature: projectSignature || null,
-          lastSavedAt: new Date().toISOString(),
-        },
-        incident: {
-          errorCode: String(primaryIssue?.code || (safeMode ? 'SRV_UNHEALTHY' : 'CFG_INVALID')),
-          severity: String(primaryIssue?.severity || (safeMode ? 'P1' : 'P2')),
-          message: String(primaryIssue?.message || 'Problem in Safe Mode gemeldet'),
-          reproSteps: [
-            'Safe Mode sichtbar',
-            'Problem melden geklickt',
-          ],
-        },
-        diagnostics: {
-          health: latestDiagnostics?.health || null,
-          recoverySteps: Array.isArray(latestDiagnostics?.recoverySteps) ? latestDiagnostics.recoverySteps : [],
-          actionsTried: [],
-        },
+        return latest;
       };
+
+      const buildSupportPayload = (latestDiagnostics, actionLabel = 'Problem melden geklickt') => {
+        const issues = Array.isArray(latestDiagnostics?.issues) ? latestDiagnostics.issues : [];
+        const primaryIssue = issues[0] || {};
+        return {
+          app: {
+            name: BRAND_NAME,
+            version: String(import.meta.env?.VITE_APP_VERSION || import.meta.env?.MODE || 'dev'),
+            channel: String(import.meta.env?.MODE || 'dev'),
+          },
+          environment: {
+            os: navigator?.userAgent || 'unknown',
+            arch: navigator?.platform || 'unknown',
+            runtime: 'desktop',
+            locale: navigator?.language || null,
+            timezone: Intl?.DateTimeFormat?.().resolvedOptions?.().timeZone || null,
+          },
+          project: {
+            id: currentProjectId || 'unknown',
+            name: projectName || null,
+            path: currentProjectPath || '',
+            signature: projectSignature || null,
+            lastSavedAt: new Date().toISOString(),
+          },
+          incident: {
+            errorCode: String(primaryIssue?.code || (safeMode ? 'SRV_UNHEALTHY' : 'CFG_INVALID')),
+            severity: String(primaryIssue?.severity || (safeMode ? 'P1' : 'P2')),
+            message: String(primaryIssue?.message || 'Problem in Safe Mode gemeldet'),
+            reproSteps: [
+              'Safe Mode sichtbar',
+              actionLabel,
+            ],
+          },
+          diagnostics: {
+            health: latestDiagnostics?.health || null,
+            preflight: latestDiagnostics?.preflight || null,
+            issues: Array.isArray(latestDiagnostics?.issues) ? latestDiagnostics.issues : [],
+            recoverySteps: Array.isArray(latestDiagnostics?.recoverySteps) ? latestDiagnostics.recoverySteps : [],
+            actionsTried: [],
+          },
+        };
+      };
+
+      const latestDiagnostics = await collectLatestDiagnostics('manual-report');
+      const payload = buildSupportPayload(latestDiagnostics, 'Problem melden geklickt');
 
       let data = null;
       let reportSaved = false;
@@ -1185,11 +1227,8 @@ function App() {
           bridgeError,
           data && data.error ? String(data.error) : '',
         ].filter(Boolean).join(' | ');
-        setIssueReportFeedback(
-          details
-            ? `Problembericht konnte nicht erstellt werden: ${details}`
-            : 'Problembericht konnte nicht erstellt werden.'
-        );
+        setIssueReportFeedback('Problem konnte nicht gesendet werden.');
+        if (details) setIssueReportTechnical(details);
         return;
       }
 
@@ -1203,12 +1242,187 @@ function App() {
       }
 
       setIssueReportFeedback(
-        `Problembericht gespeichert: ${String(data?.reportPath || '').trim() || data?.reportId || ''}`
+        'Problembericht wurde gespeichert.'
       );
+      const reportLocation = String(data?.reportPath || '').trim() || String(data?.reportId || '').trim();
+      if (reportLocation) setIssueReportTechnical(reportLocation);
     } catch {
       setIssueReportFeedback('Problembericht konnte nicht erstellt werden.');
     } finally {
       setIsReportingIssue(false);
+    }
+  };
+
+  const sendSupportPackage = async () => {
+    if (isSendingSupportPackage || isReportingIssue) return;
+    setIsSendingSupportPackage(true);
+    setIssueReportFeedback('');
+    setIssueReportTechnical('');
+    let payload = null;
+
+    try {
+      let latestDiagnostics = diagnostics;
+      try {
+        const { data } = await fetchJsonWithTimeout(`${BACKEND_URL}/api/system/preflight`, {}, 3500);
+        if (data) {
+          latestDiagnostics = {
+            source: 'manual-support-send',
+            health: data?.health || diagnostics?.health || null,
+            preflight: data?.preflight || diagnostics?.preflight || null,
+            issues: Array.isArray(data?.issues) ? data.issues : (Array.isArray(diagnostics?.issues) ? diagnostics.issues : []),
+            recoverySteps: Array.isArray(data?.recoverySteps)
+              ? data.recoverySteps
+              : (Array.isArray(diagnostics?.recoverySteps) ? diagnostics.recoverySteps : []),
+          };
+          setDiagnostics(latestDiagnostics);
+        }
+      } catch {
+        // keep latest known diagnostics
+      }
+
+      const issues = Array.isArray(latestDiagnostics?.issues) ? latestDiagnostics.issues : [];
+      const primaryIssue = issues[0] || {};
+
+      payload = {
+        app: {
+          name: BRAND_NAME,
+          version: String(import.meta.env?.VITE_APP_VERSION || import.meta.env?.MODE || 'dev'),
+          channel: String(import.meta.env?.MODE || 'dev'),
+        },
+        environment: {
+          os: navigator?.userAgent || 'unknown',
+          arch: navigator?.platform || 'unknown',
+          runtime: 'desktop',
+          locale: navigator?.language || null,
+          timezone: Intl?.DateTimeFormat?.().resolvedOptions?.().timeZone || null,
+        },
+        project: {
+          id: currentProjectId || 'unknown',
+          name: projectName || null,
+          path: currentProjectPath || '',
+          signature: projectSignature || null,
+          lastSavedAt: new Date().toISOString(),
+        },
+        incident: {
+          errorCode: String(primaryIssue?.code || (safeMode ? 'SRV_UNHEALTHY' : 'CFG_INVALID')),
+          severity: String(primaryIssue?.severity || (safeMode ? 'P1' : 'P2')),
+          message: String(primaryIssue?.message || 'Support-Paket aus Safe Mode erstellt'),
+          reproSteps: [
+            'Safe Mode sichtbar',
+            'Support-Paket senden geklickt',
+          ],
+        },
+        diagnostics: {
+          health: latestDiagnostics?.health || null,
+          preflight: latestDiagnostics?.preflight || null,
+          issues: Array.isArray(latestDiagnostics?.issues) ? latestDiagnostics.issues : [],
+          recoverySteps: Array.isArray(latestDiagnostics?.recoverySteps) ? latestDiagnostics.recoverySteps : [],
+          actionsTried: ['support-package-send'],
+        },
+      };
+
+      const tryBridgeBundleFallback = async (reasonLabel = '') => {
+        try {
+          const bridgeInfo = await inspectDesktopBridge();
+          if (bridgeInfo.available && bridgeInfo.hasSupportBundle) {
+            const ipcData = await window.fliderDesktop.saveSupportBundle(payload);
+            if (ipcData?.success) {
+              setIssueReportFeedback(
+                'Problem wurde lokal fuer den Support gespeichert.'
+              );
+              setIssueReportTechnical(String(ipcData?.bundlePath || '').trim() || '');
+              return true;
+            }
+            return false;
+          }
+        } catch {
+          // fallback below
+        }
+
+        try {
+          const bridgeInfo = await inspectDesktopBridge();
+          if (bridgeInfo.available && bridgeInfo.hasReport) {
+            const ipcData = await window.fliderDesktop.saveIssueReport(payload);
+            if (ipcData?.success) {
+              setIssueReportFeedback(
+                'Problem wurde lokal fuer den Support gespeichert.'
+              );
+              setIssueReportTechnical(
+                [reasonLabel, String(ipcData?.reportPath || '').trim()].filter(Boolean).join(' | ')
+              );
+              return true;
+            }
+          }
+        } catch {
+          // no-op
+        }
+
+        return false;
+      };
+
+      const response = await fetch(`${BACKEND_URL}/api/system/support-package`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.success) {
+        const err = String(data?.error || data?.message || `Backend ${response.status}`);
+        const fallbackSaved = await tryBridgeBundleFallback(err);
+        if (!fallbackSaved) {
+          setIssueReportFeedback('Problem konnte nicht gesendet werden.');
+          setIssueReportTechnical(err);
+        }
+        return;
+      }
+
+      const delivery = data?.delivery || {};
+      if (delivery?.sent) {
+        setIssueReportFeedback('Problem wurde an den Support gesendet.');
+        setIssueReportTechnical('');
+      } else {
+        const targetInfo = delivery?.configured
+          ? `Senden fehlgeschlagen (${String(delivery?.error || 'unbekannter Fehler')})`
+          : 'Kein Support-Ziel konfiguriert';
+        setIssueReportFeedback(
+          'Problem wurde lokal fuer den Support gespeichert.'
+        );
+        setIssueReportTechnical(
+          [String(data?.bundlePath || '').trim(), targetInfo].filter(Boolean).join(' | ')
+        );
+      }
+    } catch (error) {
+      let bridgeFallbackSaved = false;
+      try {
+        const bridgeInfo = await inspectDesktopBridge();
+        if (bridgeInfo.available && bridgeInfo.hasSupportBundle) {
+          const ipcData = await window.fliderDesktop.saveSupportBundle({
+            app: payload?.app,
+            environment: payload?.environment,
+            project: payload?.project,
+            incident: payload?.incident,
+            diagnostics: payload?.diagnostics,
+          });
+          if (ipcData?.success) {
+            bridgeFallbackSaved = true;
+            setIssueReportFeedback(
+              'Problem wurde lokal fuer den Support gespeichert.'
+            );
+            setIssueReportTechnical(String(ipcData?.bundlePath || '').trim() || '');
+          }
+        }
+      } catch {
+        bridgeFallbackSaved = false;
+      }
+
+      if (!bridgeFallbackSaved) {
+        setIssueReportFeedback(
+          'Problem konnte nicht gesendet werden.'
+        );
+        setIssueReportTechnical(String(error?.message || error || 'unbekannter Fehler'));
+      }
+    } finally {
+      setIsSendingSupportPackage(false);
     }
   };
 
@@ -1339,6 +1553,17 @@ function App() {
     if (!safeMode || isRunningDiagnostics) return;
     if (diagnostics?.health) return;
     runSystemDiagnostics().catch(() => {});
+  }, [safeMode]);
+
+  useEffect(() => {
+    if (!safeMode) {
+      safeModeAutoRepairTriggeredRef.current = false;
+      setSafeModeRepairFailed(false);
+      return;
+    }
+    if (safeModeAutoRepairTriggeredRef.current) return;
+    safeModeAutoRepairTriggeredRef.current = true;
+    repairAppNow({ auto: true }).catch(() => {});
   }, [safeMode]);
 
   useEffect(() => {
@@ -2128,31 +2353,13 @@ function App() {
   };
   const projectNameInHeader = projectName.trim() || (currentProjectId ? 'Unbenanntes Projekt' : '');
   const appFooterYear = new Date().getFullYear();
-  const diagnosticServices = diagnostics?.health
-    ? [
-      diagnostics.health.backend,
-      diagnostics.health.frontend,
-      diagnostics.health.kirby,
-    ].filter(Boolean)
-    : [];
-  const diagnosticPreflightChecks = diagnostics?.preflight?.checks
-    ? Object.values(diagnostics.preflight.checks).filter(Boolean)
-    : [];
-  const diagnosticIssues = Array.isArray(diagnostics?.issues) ? diagnostics.issues : [];
-  const safeModeHeadline =
-    diagnostics?.source === 'startup-preflight'
-      ? 'System-Preflight fehlgeschlagen'
-      : 'Server reagiert nicht stabil';
-  const safeModeDescription =
-    diagnosticIssues[0]?.message
-      ? String(diagnosticIssues[0].message)
-      : 'Backend war mehrfach nicht erreichbar. Starte die Systemdiagnose und folge den Recovery-Schritten.';
-  const desktopBridgeLabel = desktopBridgeStatus.available ? 'verfuegbar' : 'nicht verfuegbar';
-  const desktopBridgeCapabilities = [
-    `restart:${desktopBridgeStatus.hasRestart ? 'ok' : 'nein'}`,
-    `report:${desktopBridgeStatus.hasReport ? 'ok' : 'nein'}`,
-    `status:${desktopBridgeStatus.hasStatus ? 'ok' : 'nein'}`,
-  ].join(' | ');
+  const safeModeHeadline = 'Flider ist voruebergehend nicht verfuegbar';
+  const safeModeDescription = safeModeRepairFailed
+    ? 'Die automatische Reparatur hat nicht geklappt. Du kannst es erneut versuchen.'
+    : 'Wir beheben das gerade automatisch.';
+  const isSafeModeBusy =
+    isAutoRepairing || isRunningDiagnostics || isRestartingServices || isReportingIssue || isSendingSupportPackage;
+  const safeModePrimaryLabel = isSafeModeBusy ? 'App wird repariert ...' : 'App reparieren';
 
   /* ========================================================================
      RENDER
@@ -2181,76 +2388,42 @@ function App() {
           <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
             <button
               type="button"
-              onClick={runSystemDiagnostics}
-              disabled={isRunningDiagnostics || isRestartingServices || isReportingIssue}
+              onClick={repairAppNow}
+              disabled={isSafeModeBusy}
               style={{
                 background: '#ff4d4f',
                 border: 'none',
                 color: 'white',
-                padding: '0.46rem 0.78rem',
+                padding: '0.5rem 0.92rem',
                 borderRadius: '8px',
-                fontSize: '0.8rem',
+                fontSize: '0.84rem',
                 fontWeight: 600,
-                cursor: isRunningDiagnostics || isRestartingServices || isReportingIssue ? 'not-allowed' : 'pointer',
-                opacity: isRunningDiagnostics || isRestartingServices || isReportingIssue ? 0.65 : 1
+                cursor: isSafeModeBusy ? 'not-allowed' : 'pointer',
+                opacity: isSafeModeBusy ? 0.65 : 1
               }}
             >
-              {isRunningDiagnostics ? 'Diagnose läuft…' : 'Systemdiagnose starten'}
+              {safeModePrimaryLabel}
             </button>
 
-            <button
-              type="button"
-              onClick={restartSystemServices}
-              disabled={isRunningDiagnostics || isRestartingServices || isReportingIssue}
-              style={{
-                background: 'transparent',
-                border: '1px solid rgba(255,255,255,0.25)',
-                color: '#ffd6d6',
-                padding: '0.46rem 0.72rem',
-                borderRadius: '8px',
-                fontSize: '0.8rem',
-                cursor: isRunningDiagnostics || isRestartingServices || isReportingIssue ? 'not-allowed' : 'pointer',
-                opacity: isRunningDiagnostics || isRestartingServices || isReportingIssue ? 0.65 : 1
-              }}
-            >
-              {isRestartingServices ? 'Dienste werden neu gestartet…' : 'Dienste neu starten'}
-            </button>
-
-            <button
-              type="button"
-              onClick={reportSystemIssue}
-              disabled={isRunningDiagnostics || isRestartingServices || isReportingIssue}
-              style={{
-                background: 'transparent',
-                border: '1px solid rgba(255,255,255,0.25)',
-                color: '#ffd6d6',
-                padding: '0.46rem 0.72rem',
-                borderRadius: '8px',
-                fontSize: '0.8rem',
-                cursor: isRunningDiagnostics || isRestartingServices || isReportingIssue ? 'not-allowed' : 'pointer',
-                opacity: isRunningDiagnostics || isRestartingServices || isReportingIssue ? 0.65 : 1
-              }}
-            >
-              {isReportingIssue ? 'Problem wird gemeldet…' : 'Problem melden'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => inspectDesktopBridge().catch(() => {})}
-              disabled={isRunningDiagnostics || isRestartingServices || isReportingIssue}
-              style={{
-                background: 'transparent',
-                border: '1px solid rgba(255,255,255,0.25)',
-                color: '#ffd6d6',
-                padding: '0.46rem 0.72rem',
-                borderRadius: '8px',
-                fontSize: '0.8rem',
-                cursor: isRunningDiagnostics || isRestartingServices || isReportingIssue ? 'not-allowed' : 'pointer',
-                opacity: isRunningDiagnostics || isRestartingServices || isReportingIssue ? 0.65 : 1
-              }}
-            >
-              Bridge pruefen
-            </button>
+            {safeModeRepairFailed && (
+              <button
+                type="button"
+                onClick={sendSupportPackage}
+                disabled={isSafeModeBusy}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid rgba(255,255,255,0.25)',
+                  color: '#ffd6d6',
+                  padding: '0.46rem 0.72rem',
+                  borderRadius: '8px',
+                  fontSize: '0.8rem',
+                  cursor: isSafeModeBusy ? 'not-allowed' : 'pointer',
+                  opacity: isSafeModeBusy ? 0.65 : 1
+                }}
+              >
+                {isSendingSupportPackage ? 'Problem wird gesendet ...' : 'Problem senden'}
+              </button>
+            )}
           </div>
 
           {issueReportFeedback && (
@@ -2259,94 +2432,7 @@ function App() {
             </div>
           )}
 
-          {desktopBridgeStatus.checked && (
-            <div style={{ fontSize: '0.73rem', color: '#f3c7c7', lineHeight: 1.45, marginBottom: '0.65rem' }}>
-              Desktop-Bridge: <strong>{desktopBridgeLabel}</strong> ({desktopBridgeCapabilities})
-              {desktopBridgeStatus.error ? ` | Fehler: ${desktopBridgeStatus.error}` : ''}
-            </div>
-          )}
-
-          {diagnosticServices.length > 0 && (
-            <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.7rem' }}>
-              {diagnosticServices.map((service) => {
-                const up = Boolean(service?.up);
-                const label = String(service?.service || 'service');
-                return (
-                  <span
-                    key={label}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.35rem',
-                      fontSize: '0.76rem',
-                      padding: '0.26rem 0.52rem',
-                      borderRadius: '999px',
-                      background: up ? 'rgba(80,200,120,0.16)' : 'rgba(255,87,87,0.16)',
-                      color: up ? '#9ff0bf' : '#ffb5b5',
-                      border: `1px solid ${up ? 'rgba(80,200,120,0.35)' : 'rgba(255,87,87,0.35)'}`
-                    }}
-                  >
-                    <span>{label}</span>
-                    <strong>{up ? 'OK' : 'DOWN'}</strong>
-                  </span>
-                );
-              })}
-            </div>
-          )}
-
-          {diagnosticPreflightChecks.length > 0 && (
-            <div style={{ marginBottom: '0.7rem' }}>
-              <div style={{ fontSize: '0.74rem', color: '#f3c7c7', marginBottom: '0.34rem' }}>
-                Preflight:
-              </div>
-              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                {diagnosticPreflightChecks.map((check) => {
-                  const ok = Boolean(check?.ok);
-                  const label = String(check?.label || check?.id || 'check');
-                  return (
-                    <span
-                      key={String(check?.id || label)}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '0.34rem',
-                        fontSize: '0.72rem',
-                        padding: '0.22rem 0.46rem',
-                        borderRadius: '999px',
-                        background: ok ? 'rgba(80,200,120,0.16)' : 'rgba(255,167,38,0.16)',
-                        color: ok ? '#9ff0bf' : '#ffd5a1',
-                        border: `1px solid ${ok ? 'rgba(80,200,120,0.32)' : 'rgba(255,167,38,0.32)'}`
-                      }}
-                      title={String(check?.message || '')}
-                    >
-                      <span>{label}</span>
-                      <strong>{ok ? 'OK' : 'WARN'}</strong>
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {diagnosticIssues.length > 0 && (
-            <div style={{ fontSize: '0.74rem', color: '#f3c7c7', lineHeight: 1.45, marginBottom: '0.65rem' }}>
-              {diagnosticIssues.slice(0, 3).map((issue, index) => (
-                <div key={`${issue?.code || 'issue'}-${index}`}>
-                  <code>{String(issue?.code || 'ISSUE')}</code> {String(issue?.message || '')}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div style={{ fontSize: '0.74rem', color: '#e4b3b3', lineHeight: 1.5 }}>
-            Recovery:
-            {diagnostics?.recoverySteps?.map((stepCmd) => (
-              <div key={stepCmd}><code>{stepCmd}</code></div>
-            ))}
-            {!diagnostics?.recoverySteps?.length && (
-              <div><code>npm run dev:bg:ensure</code></div>
-            )}
-          </div>
+          {/* technical details intentionally hidden in end-user mode */}
         </div>
       )}
 
