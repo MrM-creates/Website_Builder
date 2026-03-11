@@ -1860,14 +1860,31 @@ const fetchKirbyPageHtml = async (pathname = '/') => {
     if (!response.ok) {
         throw new Error(`Seite ${normalizedPath} konnte nicht gerendert werden (HTTP ${response.status})`);
     }
+    const html = await response.text();
+    if (looksLikeKirbyRouterFatal(html)) {
+        throw new Error(`Seite ${normalizedPath} konnte nicht gerendert werden (Kirby Router Fatal)`);
+    }
+    return html;
+};
 
-    return response.text();
+const looksLikeKirbyRouterFatal = (value = '') => {
+    const haystack = String(value || '').toLowerCase();
+    if (!haystack) return false;
+
+    return (
+        haystack.includes("failed opening required 'kirby/router.php'") ||
+        haystack.includes('fatal error: failed opening required') && haystack.includes('kirby/router.php') ||
+        haystack.includes('warning: unknown: failed to open stream') && haystack.includes('kirby/router.php')
+    );
 };
 
 const isKirbyReachable = async () => {
     try {
         const response = await fetchWithTimeout(`${KIRBY_LOCAL_ORIGIN}/`, 2500);
-        return response.ok || response.status === 302;
+        if (response.status === 302) return true;
+        if (!response.ok) return false;
+        const body = await response.text();
+        return !looksLikeKirbyRouterFatal(body);
     } catch {
         return false;
     }
@@ -1882,14 +1899,28 @@ const probeHttpService = async (
     try {
         const response = await fetchWithTimeout(url, timeoutMs);
         const status = Number(response.status || 0);
-        const up = acceptedStatus.includes(status);
+        let up = acceptedStatus.includes(status);
+        let semanticError = null;
+
+        if (up && service === 'kirby') {
+            try {
+                const bodySample = (await response.text()).slice(0, 8000);
+                if (looksLikeKirbyRouterFatal(bodySample)) {
+                    up = false;
+                    semanticError = 'kirby router fatal detected';
+                }
+            } catch {
+                // keep status-based result if body sampling fails
+            }
+        }
+
         return {
             service,
             url,
             up,
             status,
             latencyMs: Date.now() - startedAt,
-            error: up ? null : `unexpected status ${status}`
+            error: up ? null : (semanticError || `unexpected status ${status}`)
         };
     } catch (error) {
         return {
