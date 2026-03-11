@@ -650,12 +650,6 @@ function App() {
 
       const listed = Array.isArray(data.projects) ? data.projects : [];
       setProjects(listed);
-
-      const active = listed.find((project) => project.isActive);
-      if (active?.id && step === 'welcome' && !isOpeningProject && !currentProjectId && !currentProjectPath) {
-        setCurrentProjectId(active.id);
-        setCurrentProjectPath(String(active.path || ''));
-      }
     } catch {
       // ignore: project list is optional UI state
     } finally {
@@ -741,7 +735,9 @@ function App() {
     setIsOpeningProject(true);
 
     try {
-      if (currentProjectId) {
+      // Only autosave if the user is actually editing an opened project.
+      // On welcome/startup, a stale project reference must never trigger a save.
+      if (currentProjectId && currentProjectPath && step === 'editor') {
         try {
           await fetch(`${BACKEND_URL}/api/update-site-meta`, {
             method: 'POST',
@@ -1145,16 +1141,6 @@ function App() {
   }, [step, projectName, siteLogoUrl, footerLine1, footerLine2, footerLine3]);
 
   useEffect(() => {
-    if (!currentProjectId || step !== 'editor' || isResettingProjectRef.current) return;
-
-    const intervalId = setInterval(() => {
-      saveCurrentProject().catch(() => {});
-    }, 15000);
-
-    return () => clearInterval(intervalId);
-  }, [currentProjectId, step]);
-
-  useEffect(() => {
     if (!currentProjectId || step !== 'editor' || !projectSignature || isResettingProjectRef.current) return;
     if (lastPersistedContentSignatureRef.current === projectSignature) return;
 
@@ -1294,7 +1280,8 @@ function App() {
   const performStartNewProject = async (projectPath) => {
     isResettingProjectRef.current = true;
 
-    if (currentProjectId) {
+    // Only snapshot-save if the current project is actively open in editor.
+    if (currentProjectId && currentProjectPath && step === 'editor') {
       try {
         await saveCurrentProject();
       } catch {
