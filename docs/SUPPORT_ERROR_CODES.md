@@ -188,6 +188,12 @@ Optional:
   - L2: config validieren/reparieren
   - L3: schema validation + migration fix
 
+- `SUPPORT_REPORT_SAVE_FAILED` (P2)
+  - Trigger: Problembericht konnte lokal nicht gespeichert werden
+  - L1: Erneut versuchen
+  - L2: Schreibrechte im `.flatsite`-Ordner pruefen
+  - L3: Report-Pipeline fixen
+
 ## 5.7 Preview/SEO
 
 - `PREVIEW_BLANK` (P1)

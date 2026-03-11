@@ -36,10 +36,13 @@ const STORAGE_CONFIG_FILE = path.join(FLATSITE_DIR, 'config.json');
 const ACTIVE_PROJECT_FILE = path.join(FLATSITE_DIR, 'active-project.json');
 const REPAIR_LOG_FILE = path.join(FLATSITE_DIR, 'repair-events.log');
 const ADMIN_CREDENTIALS_FILE = path.join(FLATSITE_DIR, 'admin-credentials.json');
+const SUPPORT_REPORTS_DIR = path.join(FLATSITE_DIR, 'reports');
 const PROJECT_RECOVERY_DIR_NAME = '_recovery';
 const LIVE_CONTENT_DIR = path.join(KIRBY_ROOT, 'content');
 const LIVE_CUSTOM_CSS_PATH = path.join(KIRBY_ROOT, 'assets', 'css', 'custom.css');
 const LIVE_UPLOADS_DIR = path.join(KIRBY_ROOT, 'assets', 'uploads');
+const APP_NAME = 'Flider';
+const APP_VERSION = String(process.env.npm_package_version || '').trim() || 'unknown';
 
 const parseField = (content, key) => {
     const match = content.match(new RegExp(`^${key}:\\s*(.+)$`, 'mi'));
@@ -3260,6 +3263,54 @@ const startDetachedSystemRecovery = () => {
     };
 };
 
+const nowCompactTimestamp = () => {
+    const d = new Date();
+    const yyyy = String(d.getFullYear());
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${yyyy}${mm}${dd}-${hh}${mi}${ss}`;
+};
+
+const normalizeSeverity = (value = '') => {
+    const normalized = String(value || '').trim().toUpperCase();
+    if (['P0', 'P1', 'P2', 'P3'].includes(normalized)) return normalized;
+    return 'P1';
+};
+
+const sanitizeErrorCode = (value = '') => {
+    const raw = String(value || '').trim().toUpperCase();
+    if (/^[A-Z]+_[A-Z0-9_]+$/.test(raw)) return raw;
+    return 'SRV_UNHEALTHY';
+};
+
+const normalizeStringArray = (value, fallback = []) => {
+    if (!Array.isArray(value)) return fallback;
+    return value
+        .map((item) => String(item || '').trim())
+        .filter(Boolean);
+};
+
+const pickServiceHealth = (payload = {}) => {
+    const toService = (value, fallbackName) => ({
+        service: String(value?.service || fallbackName),
+        up: Boolean(value?.up),
+        status: Number(value?.status || 0) || 0,
+        latencyMs: Number.isFinite(Number(value?.latencyMs))
+            ? Number(value?.latencyMs)
+            : null,
+        error: value?.error ? String(value.error) : null
+    });
+
+    return {
+        backend: toService(payload?.backend || {}, 'backend'),
+        frontend: toService(payload?.frontend || {}, 'frontend'),
+        kirby: toService(payload?.kirby || {}, 'kirby')
+    };
+};
+
 app.get('/api/system/health', async (req, res) => {
     try {
         const [backend, frontend, kirby] = await Promise.all([
@@ -3485,6 +3536,93 @@ app.post('/api/system/restart', express.json(), async (req, res) => {
             success: false,
             errorCode: 'SRV_RESTART_FAILED',
             error: String(error?.message || 'System-Recovery konnte nicht gestartet werden')
+        });
+    }
+});
+
+app.post('/api/system/report-issue', express.json(), async (req, res) => {
+    try {
+        ensureFlatsiteDir();
+        fs.mkdirSync(SUPPORT_REPORTS_DIR, { recursive: true });
+
+        const body = req.body && typeof req.body === 'object' ? req.body : {};
+        const incidentInput = body.incident && typeof body.incident === 'object' ? body.incident : {};
+        const appInput = body.app && typeof body.app === 'object' ? body.app : {};
+        const envInput = body.environment && typeof body.environment === 'object' ? body.environment : {};
+        const projectInput = body.project && typeof body.project === 'object' ? body.project : {};
+        const diagnosticsInput = body.diagnostics && typeof body.diagnostics === 'object' ? body.diagnostics : {};
+
+        const reportId =
+            (typeof crypto.randomUUID === 'function'
+                ? crypto.randomUUID()
+                : crypto.randomBytes(16).toString('hex'));
+        const timestamp = new Date().toISOString();
+        const projectPath = String(projectInput.path || '').trim();
+
+        const report = {
+            schemaVersion: '1.0',
+            reportType: 'diagnostic-report',
+            reportId,
+            timestamp,
+            app: {
+                name: String(appInput.name || APP_NAME),
+                version: String(appInput.version || APP_VERSION),
+                build: String(appInput.build || '').trim() || null,
+                channel: String(appInput.channel || '').trim() || null
+            },
+            environment: {
+                os: String(envInput.os || os.platform()),
+                arch: String(envInput.arch || os.arch()),
+                runtime: String(envInput.runtime || 'desktop'),
+                locale: String(envInput.locale || '').trim() || null,
+                timezone: String(envInput.timezone || '').trim() || null
+            },
+            project: {
+                id: String(projectInput.id || '').trim() || 'unknown',
+                name: String(projectInput.name || '').trim() || null,
+                path: projectPath || APP_ROOT,
+                signature: String(projectInput.signature || '').trim() || null,
+                lastSavedAt: String(projectInput.lastSavedAt || '').trim() || null
+            },
+            incident: {
+                errorCode: sanitizeErrorCode(incidentInput.errorCode),
+                severity: normalizeSeverity(incidentInput.severity),
+                message: String(incidentInput.message || 'Problem gemeldet').trim() || 'Problem gemeldet',
+                httpStatus: Number.isFinite(Number(incidentInput.httpStatus))
+                    ? Number(incidentInput.httpStatus)
+                    : null,
+                requestId: String(incidentInput.requestId || '').trim() || null,
+                startedAt: String(incidentInput.startedAt || '').trim() || null,
+                reproSteps: normalizeStringArray(incidentInput.reproSteps, ['Problem in App gemeldet'])
+            },
+            services: pickServiceHealth(diagnosticsInput.health || {}),
+            recovery: {
+                suggestedSteps: normalizeStringArray(diagnosticsInput.recoverySteps, []),
+                actionsTried: Array.isArray(diagnosticsInput.actionsTried)
+                    ? diagnosticsInput.actionsTried.slice(0, 20)
+                    : []
+            },
+            attachments: []
+        };
+
+        const filename = `report-${nowCompactTimestamp()}-${String(reportId).slice(0, 8)}.json`;
+        const reportPath = path.join(SUPPORT_REPORTS_DIR, filename);
+        writeJsonFile(reportPath, report);
+
+        const summary = `[${report.incident.errorCode}/${report.incident.severity}] ${report.incident.message} (${report.timestamp})`;
+
+        res.json({
+            success: true,
+            reportId,
+            reportPath,
+            summary,
+            message: 'Problembericht wurde lokal gespeichert'
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            errorCode: 'SUPPORT_REPORT_SAVE_FAILED',
+            error: String(error?.message || 'Problembericht konnte nicht gespeichert werden')
         });
     }
 });

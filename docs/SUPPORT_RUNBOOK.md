@@ -29,8 +29,8 @@ Zugehoeriger Error-Code-Katalog:
 ## 3.1 Primaerer Kanal
 
 - In-App Button: `Problem melden`
-- App erzeugt ein Diagnosepaket und sendet es an eine Support-Adresse
-  - Beispiel: `support@flider.app`
+- App erzeugt ein Diagnosepaket und speichert es lokal unter `.flatsite/reports`
+- Optional (naechster Ausbau): Versand an Support-Adresse, z.B. `support@flider.app`
 
 ## 3.2 Sekundaerer Kanal
 

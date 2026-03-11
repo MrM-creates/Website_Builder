@@ -413,6 +413,8 @@ function App() {
   const [backendFailureCount, setBackendFailureCount] = useState(0);
   const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
   const [isRestartingServices, setIsRestartingServices] = useState(false);
+  const [isReportingIssue, setIsReportingIssue] = useState(false);
+  const [issueReportFeedback, setIssueReportFeedback] = useState('');
   const [diagnostics, setDiagnostics] = useState(null);
 
   // Refs
@@ -973,6 +975,101 @@ function App() {
       }
     } finally {
       setIsRestartingServices(false);
+    }
+  };
+
+  const reportSystemIssue = async () => {
+    if (isReportingIssue) return;
+    setIsReportingIssue(true);
+    setIssueReportFeedback('');
+
+    try {
+      let latestDiagnostics = diagnostics;
+      try {
+        const { data } = await fetchJsonWithTimeout(`${BACKEND_URL}/api/system/preflight`, {}, 3500);
+        if (data) {
+          latestDiagnostics = {
+            source: 'manual-report',
+            health: data?.health || diagnostics?.health || null,
+            preflight: data?.preflight || diagnostics?.preflight || null,
+            issues: Array.isArray(data?.issues) ? data.issues : (Array.isArray(diagnostics?.issues) ? diagnostics.issues : []),
+            recoverySteps: Array.isArray(data?.recoverySteps)
+              ? data.recoverySteps
+              : (Array.isArray(diagnostics?.recoverySteps) ? diagnostics.recoverySteps : []),
+          };
+          setDiagnostics(latestDiagnostics);
+        }
+      } catch {
+        // keep existing diagnostics
+      }
+
+      const issues = Array.isArray(latestDiagnostics?.issues) ? latestDiagnostics.issues : [];
+      const primaryIssue = issues[0] || {};
+
+      const payload = {
+        app: {
+          name: BRAND_NAME,
+          version: String(import.meta.env?.VITE_APP_VERSION || import.meta.env?.MODE || 'dev'),
+          channel: String(import.meta.env?.MODE || 'dev'),
+        },
+        environment: {
+          os: navigator?.userAgent || 'unknown',
+          arch: navigator?.platform || 'unknown',
+          runtime: 'desktop',
+          locale: navigator?.language || null,
+          timezone: Intl?.DateTimeFormat?.().resolvedOptions?.().timeZone || null,
+        },
+        project: {
+          id: currentProjectId || 'unknown',
+          name: projectName || null,
+          path: currentProjectPath || '',
+          signature: projectSignature || null,
+          lastSavedAt: new Date().toISOString(),
+        },
+        incident: {
+          errorCode: String(primaryIssue?.code || (safeMode ? 'SRV_UNHEALTHY' : 'CFG_INVALID')),
+          severity: String(primaryIssue?.severity || (safeMode ? 'P1' : 'P2')),
+          message: String(primaryIssue?.message || 'Problem in Safe Mode gemeldet'),
+          reproSteps: [
+            'Safe Mode sichtbar',
+            'Problem melden geklickt',
+          ],
+        },
+        diagnostics: {
+          health: latestDiagnostics?.health || null,
+          recoverySteps: Array.isArray(latestDiagnostics?.recoverySteps) ? latestDiagnostics.recoverySteps : [],
+          actionsTried: [],
+        },
+      };
+
+      const response = await fetch(`${BACKEND_URL}/api/system/report-issue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data?.success) {
+        setIssueReportFeedback(data?.error || 'Problembericht konnte nicht erstellt werden.');
+        return;
+      }
+
+      const summary = String(data?.summary || '').trim();
+      if (summary && navigator?.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(summary);
+        } catch {
+          // clipboard optional
+        }
+      }
+
+      setIssueReportFeedback(
+        `Problembericht gespeichert: ${String(data?.reportPath || '').trim() || data?.reportId || ''}`
+      );
+    } catch {
+      setIssueReportFeedback('Problembericht konnte nicht erstellt werden.');
+    } finally {
+      setIsReportingIssue(false);
     }
   };
 
@@ -1935,7 +2032,7 @@ function App() {
             <button
               type="button"
               onClick={runSystemDiagnostics}
-              disabled={isRunningDiagnostics || isRestartingServices}
+              disabled={isRunningDiagnostics || isRestartingServices || isReportingIssue}
               style={{
                 background: '#ff4d4f',
                 border: 'none',
@@ -1944,8 +2041,8 @@ function App() {
                 borderRadius: '8px',
                 fontSize: '0.8rem',
                 fontWeight: 600,
-                cursor: isRunningDiagnostics || isRestartingServices ? 'not-allowed' : 'pointer',
-                opacity: isRunningDiagnostics || isRestartingServices ? 0.65 : 1
+                cursor: isRunningDiagnostics || isRestartingServices || isReportingIssue ? 'not-allowed' : 'pointer',
+                opacity: isRunningDiagnostics || isRestartingServices || isReportingIssue ? 0.65 : 1
               }}
             >
               {isRunningDiagnostics ? 'Diagnose läuft…' : 'Systemdiagnose starten'}
@@ -1954,7 +2051,7 @@ function App() {
             <button
               type="button"
               onClick={restartSystemServices}
-              disabled={isRunningDiagnostics || isRestartingServices}
+              disabled={isRunningDiagnostics || isRestartingServices || isReportingIssue}
               style={{
                 background: 'transparent',
                 border: '1px solid rgba(255,255,255,0.25)',
@@ -1962,13 +2059,37 @@ function App() {
                 padding: '0.46rem 0.72rem',
                 borderRadius: '8px',
                 fontSize: '0.8rem',
-                cursor: isRunningDiagnostics || isRestartingServices ? 'not-allowed' : 'pointer',
-                opacity: isRunningDiagnostics || isRestartingServices ? 0.65 : 1
+                cursor: isRunningDiagnostics || isRestartingServices || isReportingIssue ? 'not-allowed' : 'pointer',
+                opacity: isRunningDiagnostics || isRestartingServices || isReportingIssue ? 0.65 : 1
               }}
             >
               {isRestartingServices ? 'Dienste werden neu gestartet…' : 'Dienste neu starten'}
             </button>
+
+            <button
+              type="button"
+              onClick={reportSystemIssue}
+              disabled={isRunningDiagnostics || isRestartingServices || isReportingIssue}
+              style={{
+                background: 'transparent',
+                border: '1px solid rgba(255,255,255,0.25)',
+                color: '#ffd6d6',
+                padding: '0.46rem 0.72rem',
+                borderRadius: '8px',
+                fontSize: '0.8rem',
+                cursor: isRunningDiagnostics || isRestartingServices || isReportingIssue ? 'not-allowed' : 'pointer',
+                opacity: isRunningDiagnostics || isRestartingServices || isReportingIssue ? 0.65 : 1
+              }}
+            >
+              {isReportingIssue ? 'Problem wird gemeldet…' : 'Problem melden'}
+            </button>
           </div>
+
+          {issueReportFeedback && (
+            <div style={{ fontSize: '0.74rem', color: '#f3c7c7', lineHeight: 1.45, marginBottom: '0.65rem' }}>
+              {issueReportFeedback}
+            </div>
+          )}
 
           {diagnosticServices.length > 0 && (
             <div style={{ display: 'flex', gap: '0.45rem', flexWrap: 'wrap', marginBottom: '0.7rem' }}>
