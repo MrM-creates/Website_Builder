@@ -1034,12 +1034,12 @@ function App() {
         } catch {
           // ignore diagnostics failures
         }
-        setIssueReportFeedback('Die Reparatur konnte nicht abgeschlossen werden.');
+        setIssueReportFeedback('Die Reparatur hat nicht funktioniert.');
         if (details) setIssueReportTechnical(details);
         return false;
       }
 
-      setIssueReportFeedback('Wir reparieren die App ...');
+      setIssueReportFeedback('Flider wird repariert ...');
 
       // Wait briefly for restart process to kick in.
       await new Promise((resolve) => setTimeout(resolve, 1800));
@@ -1064,7 +1064,7 @@ function App() {
         if (allUp) {
           setSafeMode(false);
           setBackendFailureCount(0);
-          setIssueReportFeedback('App laeuft wieder stabil.');
+          setIssueReportFeedback('Flider laeuft wieder.');
           setIssueReportTechnical('');
           recovered = true;
           break;
@@ -1073,7 +1073,7 @@ function App() {
         await new Promise((resolve) => setTimeout(resolve, 1200));
       }
       if (!recovered) {
-        setIssueReportFeedback('Die automatische Reparatur hat nicht geklappt.');
+        setIssueReportFeedback('Automatische Reparatur fehlgeschlagen.');
       }
       return recovered;
     } finally {
@@ -1088,7 +1088,7 @@ function App() {
 
     if (auto && safeModeAutoRepairAttemptsRef.current >= SAFE_MODE_AUTO_REPAIR_MAX_TRIES) {
       setSafeModeRepairFailed(true);
-      setIssueReportFeedback('Die automatische Reparatur hat nicht geklappt. Bitte App reparieren.');
+      setIssueReportFeedback('Automatische Reparatur fehlgeschlagen. Bitte App reparieren.');
       return;
     }
 
@@ -1096,7 +1096,7 @@ function App() {
     if (!auto) {
       setSafeModeCanSendSupport(false);
     }
-    setIssueReportFeedback(auto ? 'Wir beheben das gerade automatisch ...' : 'Wir versuchen die Reparatur erneut ...');
+    setIssueReportFeedback(auto ? 'Wir versuchen es automatisch ...' : 'Wir versuchen die Reparatur erneut ...');
     setIssueReportTechnical('');
     if (auto) {
       safeModeAutoRepairAttemptsRef.current += 1;
@@ -1244,7 +1244,7 @@ function App() {
           bridgeError,
           data && data.error ? String(data.error) : '',
         ].filter(Boolean).join(' | ');
-        setIssueReportFeedback('Problem konnte nicht gesendet werden.');
+        setIssueReportFeedback('Senden nicht moeglich. Bitte spaeter erneut versuchen.');
         if (details) setIssueReportTechnical(details);
         return;
       }
@@ -1259,12 +1259,12 @@ function App() {
       }
 
       setIssueReportFeedback(
-        'Problembericht wurde gespeichert.'
+        'Problem lokal gespeichert.'
       );
       const reportLocation = String(data?.reportPath || '').trim() || String(data?.reportId || '').trim();
       if (reportLocation) setIssueReportTechnical(reportLocation);
     } catch {
-      setIssueReportFeedback('Problembericht konnte nicht erstellt werden.');
+      setIssueReportFeedback('Speichern nicht moeglich.');
     } finally {
       setIsReportingIssue(false);
     }
@@ -1345,7 +1345,7 @@ function App() {
             const ipcData = await window.fliderDesktop.saveSupportBundle(payload);
             if (ipcData?.success) {
               setIssueReportFeedback(
-                'Problem wurde lokal fuer den Support gespeichert.'
+                'Problem lokal fuer den Support gespeichert.'
               );
               setIssueReportTechnical(String(ipcData?.bundlePath || '').trim() || '');
               return true;
@@ -1362,7 +1362,7 @@ function App() {
             const ipcData = await window.fliderDesktop.saveIssueReport(payload);
             if (ipcData?.success) {
               setIssueReportFeedback(
-                'Problem wurde lokal fuer den Support gespeichert.'
+                'Problem lokal fuer den Support gespeichert.'
               );
               setIssueReportTechnical(
                 [reasonLabel, String(ipcData?.reportPath || '').trim()].filter(Boolean).join(' | ')
@@ -1387,7 +1387,7 @@ function App() {
         const err = String(data?.error || data?.message || `Backend ${response.status}`);
         const fallbackSaved = await tryBridgeBundleFallback(err);
         if (!fallbackSaved) {
-          setIssueReportFeedback('Problem konnte nicht gesendet werden.');
+          setIssueReportFeedback('Senden nicht moeglich. Bitte spaeter erneut versuchen.');
           setIssueReportTechnical(err);
         }
         return;
@@ -1395,14 +1395,14 @@ function App() {
 
       const delivery = data?.delivery || {};
       if (delivery?.sent) {
-        setIssueReportFeedback('Problem wurde an den Support gesendet.');
+        setIssueReportFeedback('Problem an Support gesendet.');
         setIssueReportTechnical('');
       } else {
         const targetInfo = delivery?.configured
           ? `Senden fehlgeschlagen (${String(delivery?.error || 'unbekannter Fehler')})`
           : 'Kein Support-Ziel konfiguriert';
         setIssueReportFeedback(
-          'Problem wurde lokal fuer den Support gespeichert.'
+          'Problem lokal fuer den Support gespeichert.'
         );
         setIssueReportTechnical(
           [String(data?.bundlePath || '').trim(), targetInfo].filter(Boolean).join(' | ')
@@ -1423,7 +1423,7 @@ function App() {
           if (ipcData?.success) {
             bridgeFallbackSaved = true;
             setIssueReportFeedback(
-              'Problem wurde lokal fuer den Support gespeichert.'
+              'Problem lokal fuer den Support gespeichert.'
             );
             setIssueReportTechnical(String(ipcData?.bundlePath || '').trim() || '');
           }
@@ -1434,7 +1434,7 @@ function App() {
 
       if (!bridgeFallbackSaved) {
         setIssueReportFeedback(
-          'Problem konnte nicht gesendet werden.'
+          'Senden nicht moeglich. Bitte spaeter erneut versuchen.'
         );
         setIssueReportTechnical(String(error?.message || error || 'unbekannter Fehler'));
       }
@@ -1591,7 +1591,7 @@ function App() {
     if (safeModeRepairFailed) return;
     if (safeModeAutoRepairAttemptsRef.current >= SAFE_MODE_AUTO_REPAIR_MAX_TRIES) {
       setSafeModeRepairFailed(true);
-      setIssueReportFeedback('Die automatische Reparatur hat nicht geklappt. Bitte App reparieren.');
+      setIssueReportFeedback('Automatische Reparatur fehlgeschlagen. Bitte App reparieren.');
       return;
     }
     const delay = safeModeAutoRepairAttemptsRef.current > 0
@@ -2402,8 +2402,8 @@ function App() {
   const safeModeDescription = safeModeCanSendSupport
     ? 'Die Reparatur war nicht erfolgreich. Du kannst das Problem jetzt senden.'
     : safeModeRepairFailed
-      ? 'Die automatische Reparatur hat nicht geklappt. Bitte App reparieren.'
-      : 'Wir beheben das gerade automatisch.';
+      ? 'Automatische Reparatur fehlgeschlagen. Bitte App reparieren.'
+      : 'Wir versuchen es automatisch.';
   const isSafeModeBusy =
     isAutoRepairing || isRunningDiagnostics || isRestartingServices || isReportingIssue || isSendingSupportPackage;
   const safeModePrimaryLabel = isSafeModeBusy ? 'App wird repariert ...' : 'App reparieren';
