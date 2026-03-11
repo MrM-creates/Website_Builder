@@ -1644,7 +1644,16 @@ function App() {
   }, [step, panelSrc, kirbyReady]);
 
   useEffect(() => {
-    if (!currentProjectId || step !== 'editor' || isApplyingProjectStateRef.current || isResettingProjectRef.current) {
+    // Persist project state across all setup steps (not only editor),
+    // so hosting credentials survive project switches/restarts.
+    if (
+      !currentProjectId ||
+      !currentProjectPath ||
+      step === 'welcome' ||
+      isOpeningProject ||
+      isApplyingProjectStateRef.current ||
+      isResettingProjectRef.current
+    ) {
       return;
     }
 
@@ -1655,7 +1664,9 @@ function App() {
     return () => clearTimeout(timer);
   }, [
     currentProjectId,
+    currentProjectPath,
     step,
+    isOpeningProject,
     projectName,
     siteLogoUrl,
     pages,
