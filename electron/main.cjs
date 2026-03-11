@@ -16,6 +16,51 @@ let stackStartedByDesktop = false;
 let desktopRuntime = null;
 let frontendBootInProgress = false;
 
+const ensurePathFromTemplate = (templatePath, runtimePath, { recursive = false } = {}) => {
+  if (fs.existsSync(runtimePath)) return;
+  if (!fs.existsSync(templatePath)) return;
+  fs.mkdirSync(path.dirname(runtimePath), { recursive: true });
+  if (recursive) {
+    fs.cpSync(templatePath, runtimePath, { recursive: true });
+    return;
+  }
+  fs.copyFileSync(templatePath, runtimePath);
+};
+
+const healKirbyRuntimeFromTemplate = (kirbyTemplateRoot, kirbyRoot) => {
+  // Ensure critical Kirby runtime entry points exist.
+  // Missing router/bootstrap leads to PHP fatal errors on startup.
+  ensurePathFromTemplate(
+    path.join(kirbyTemplateRoot, 'index.php'),
+    path.join(kirbyRoot, 'index.php')
+  );
+  ensurePathFromTemplate(
+    path.join(kirbyTemplateRoot, 'kirby'),
+    path.join(kirbyRoot, 'kirby'),
+    { recursive: true }
+  );
+  ensurePathFromTemplate(
+    path.join(kirbyTemplateRoot, 'site', 'config'),
+    path.join(kirbyRoot, 'site', 'config'),
+    { recursive: true }
+  );
+
+  // If the Kirby core folder exists but essential files are missing, copy the core folder again.
+  const requiredCoreFiles = [
+    path.join(kirbyRoot, 'kirby', 'router.php'),
+    path.join(kirbyRoot, 'kirby', 'bootstrap.php'),
+    path.join(kirbyRoot, 'index.php'),
+  ];
+  const missingCore = requiredCoreFiles.some((filePath) => !fs.existsSync(filePath));
+  if (missingCore) {
+    fs.cpSync(path.join(kirbyTemplateRoot, 'kirby'), path.join(kirbyRoot, 'kirby'), { recursive: true });
+    ensurePathFromTemplate(
+      path.join(kirbyTemplateRoot, 'index.php'),
+      path.join(kirbyRoot, 'index.php')
+    );
+  }
+};
+
 const ensureDesktopRuntime = () => {
   if (!app.isPackaged) {
     desktopRuntime = null;
@@ -39,6 +84,9 @@ const ensureDesktopRuntime = () => {
   if (!fs.existsSync(kirbyRoot)) {
     fs.cpSync(kirbyTemplateRoot, kirbyRoot, { recursive: true });
   }
+
+  // Self-heal partial runtime copies from older/failed builds.
+  healKirbyRuntimeFromTemplate(kirbyTemplateRoot, kirbyRoot);
 
   fs.mkdirSync(stateDir, { recursive: true });
   fs.mkdirSync(path.join(kirbyRoot, 'content'), { recursive: true });
