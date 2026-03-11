@@ -416,6 +416,15 @@ function App() {
   const [isReportingIssue, setIsReportingIssue] = useState(false);
   const [issueReportFeedback, setIssueReportFeedback] = useState('');
   const [diagnostics, setDiagnostics] = useState(null);
+  const [desktopBridgeStatus, setDesktopBridgeStatus] = useState({
+    checked: false,
+    available: false,
+    hasRestart: false,
+    hasReport: false,
+    hasStatus: false,
+    error: '',
+    details: null,
+  });
 
   // Refs
   const editInputRef = useRef(null);
@@ -883,6 +892,38 @@ function App() {
     }
   };
 
+  const inspectDesktopBridge = async () => {
+    const bridge =
+      typeof window !== 'undefined' && window
+        ? window.fliderDesktop || null
+        : null;
+
+    const info = {
+      checked: true,
+      available: Boolean(bridge),
+      hasRestart: typeof bridge?.restartServices === 'function',
+      hasReport: typeof bridge?.saveIssueReport === 'function',
+      hasStatus: typeof bridge?.bridgeStatus === 'function',
+      error: '',
+      details: null,
+    };
+
+    if (info.available && info.hasStatus) {
+      try {
+        const details = await bridge.bridgeStatus();
+        info.details = details || null;
+        if (details && details.success === false && details.error) {
+          info.error = String(details.error);
+        }
+      } catch (error) {
+        info.error = String(error?.message || error || 'bridge-status fehlgeschlagen');
+      }
+    }
+
+    setDesktopBridgeStatus(info);
+    return info;
+  };
+
   const runSystemDiagnostics = async () => {
     setIsRunningDiagnostics(true);
     try {
@@ -933,9 +974,12 @@ function App() {
   const restartSystemServices = async () => {
     if (isRestartingServices) return;
     setIsRestartingServices(true);
+    setIssueReportFeedback('');
 
     try {
       let restartAccepted = false;
+      let backendError = '';
+      let bridgeError = '';
       try {
         const response = await fetch(`${BACKEND_URL}/api/system/restart`, {
           method: 'POST',
@@ -943,28 +987,50 @@ function App() {
           body: JSON.stringify({ reason: 'safe-mode-restart' }),
         });
         restartAccepted = response.ok;
+        if (!response.ok) {
+          backendError = `Backend ${response.status}`;
+        }
       } catch {
         restartAccepted = false;
+        backendError = 'Backend nicht erreichbar';
       }
 
-      if (!restartAccepted && window?.fliderDesktop?.restartServices) {
-        try {
-          const ipcResult = await window.fliderDesktop.restartServices();
-          restartAccepted = Boolean(ipcResult?.success);
-          if (!restartAccepted && ipcResult?.error) {
-            setIssueReportFeedback(String(ipcResult.error));
+      if (!restartAccepted) {
+        const bridgeInfo = await inspectDesktopBridge();
+        if (bridgeInfo.available && bridgeInfo.hasRestart) {
+          try {
+            const ipcResult = await window.fliderDesktop.restartServices();
+            restartAccepted = Boolean(ipcResult?.success);
+            if (!restartAccepted) {
+              bridgeError = String(ipcResult?.error || 'Desktop-Bridge Neustart fehlgeschlagen');
+            }
+          } catch (error) {
+            restartAccepted = false;
+            bridgeError = String(error?.message || error || 'Desktop-Bridge Neustart fehlgeschlagen');
           }
-        } catch {
-          restartAccepted = false;
+        } else {
+          bridgeError = bridgeInfo.available
+            ? 'Desktop-Bridge ohne restartServices()'
+            : 'Desktop-Bridge nicht verfuegbar';
         }
       }
 
       if (!restartAccepted) {
-        if (!issueReportFeedback) {
-          setIssueReportFeedback('Neustart konnte nicht gestartet werden. Bitte App kurz neu oeffnen.');
+        const details = [backendError, bridgeError].filter(Boolean).join(' | ');
+        try {
+          await runSystemDiagnostics();
+        } catch {
+          // ignore diagnostics failures
         }
+        setIssueReportFeedback(
+          details
+            ? `Neustart konnte nicht gestartet werden: ${details}`
+            : 'Neustart konnte nicht gestartet werden. Bitte App kurz neu oeffnen.'
+        );
         return;
       }
+
+      setIssueReportFeedback('Neustart wurde gestartet. Dienste werden geprueft ...');
 
       // Wait briefly for restart process to kick in.
       await new Promise((resolve) => setTimeout(resolve, 1800));
@@ -989,6 +1055,7 @@ function App() {
         if (allUp) {
           setSafeMode(false);
           setBackendFailureCount(0);
+          setIssueReportFeedback('Dienste laufen wieder stabil.');
           break;
         }
 
@@ -1065,6 +1132,8 @@ function App() {
 
       let data = null;
       let reportSaved = false;
+      let backendError = '';
+      let bridgeError = '';
       try {
         const response = await fetch(`${BACKEND_URL}/api/system/report-issue`, {
           method: 'POST',
@@ -1075,27 +1144,52 @@ function App() {
         if (response.ok && responseData?.success) {
           data = responseData;
           reportSaved = true;
+        } else {
+          backendError = String(
+            responseData?.error ||
+            responseData?.message ||
+            `Backend ${response.status}`
+          );
         }
-      } catch {
+      } catch (error) {
         reportSaved = false;
+        backendError = String(error?.message || error || 'Backend nicht erreichbar');
       }
 
-      if (!reportSaved && window?.fliderDesktop?.saveIssueReport) {
-        try {
-          const ipcData = await window.fliderDesktop.saveIssueReport(payload);
-          if (ipcData?.success) {
-            data = ipcData;
-            reportSaved = true;
-          } else {
-            data = ipcData;
+      if (!reportSaved) {
+        const bridgeInfo = await inspectDesktopBridge();
+        if (bridgeInfo.available && bridgeInfo.hasReport) {
+          try {
+            const ipcData = await window.fliderDesktop.saveIssueReport(payload);
+            if (ipcData?.success) {
+              data = ipcData;
+              reportSaved = true;
+            } else {
+              data = ipcData;
+              bridgeError = String(ipcData?.error || 'Desktop-Bridge Report fehlgeschlagen');
+            }
+          } catch (error) {
+            reportSaved = false;
+            bridgeError = String(error?.message || error || 'Desktop-Bridge Report fehlgeschlagen');
           }
-        } catch {
-          reportSaved = false;
+        } else {
+          bridgeError = bridgeInfo.available
+            ? 'Desktop-Bridge ohne saveIssueReport()'
+            : 'Desktop-Bridge nicht verfuegbar';
         }
       }
 
       if (!reportSaved || !data?.success) {
-        setIssueReportFeedback((data && data.error) || 'Problembericht konnte nicht erstellt werden.');
+        const details = [
+          backendError,
+          bridgeError,
+          data && data.error ? String(data.error) : '',
+        ].filter(Boolean).join(' | ');
+        setIssueReportFeedback(
+          details
+            ? `Problembericht konnte nicht erstellt werden: ${details}`
+            : 'Problembericht konnte nicht erstellt werden.'
+        );
         return;
       }
 
@@ -1245,6 +1339,11 @@ function App() {
     if (!safeMode || isRunningDiagnostics) return;
     if (diagnostics?.health) return;
     runSystemDiagnostics().catch(() => {});
+  }, [safeMode]);
+
+  useEffect(() => {
+    if (!safeMode) return;
+    inspectDesktopBridge().catch(() => {});
   }, [safeMode]);
 
   useEffect(() => {
@@ -2048,6 +2147,12 @@ function App() {
     diagnosticIssues[0]?.message
       ? String(diagnosticIssues[0].message)
       : 'Backend war mehrfach nicht erreichbar. Starte die Systemdiagnose und folge den Recovery-Schritten.';
+  const desktopBridgeLabel = desktopBridgeStatus.available ? 'verfuegbar' : 'nicht verfuegbar';
+  const desktopBridgeCapabilities = [
+    `restart:${desktopBridgeStatus.hasRestart ? 'ok' : 'nein'}`,
+    `report:${desktopBridgeStatus.hasReport ? 'ok' : 'nein'}`,
+    `status:${desktopBridgeStatus.hasStatus ? 'ok' : 'nein'}`,
+  ].join(' | ');
 
   /* ========================================================================
      RENDER
@@ -2128,11 +2233,36 @@ function App() {
             >
               {isReportingIssue ? 'Problem wird gemeldet…' : 'Problem melden'}
             </button>
+
+            <button
+              type="button"
+              onClick={() => inspectDesktopBridge().catch(() => {})}
+              disabled={isRunningDiagnostics || isRestartingServices || isReportingIssue}
+              style={{
+                background: 'transparent',
+                border: '1px solid rgba(255,255,255,0.25)',
+                color: '#ffd6d6',
+                padding: '0.46rem 0.72rem',
+                borderRadius: '8px',
+                fontSize: '0.8rem',
+                cursor: isRunningDiagnostics || isRestartingServices || isReportingIssue ? 'not-allowed' : 'pointer',
+                opacity: isRunningDiagnostics || isRestartingServices || isReportingIssue ? 0.65 : 1
+              }}
+            >
+              Bridge pruefen
+            </button>
           </div>
 
           {issueReportFeedback && (
             <div style={{ fontSize: '0.74rem', color: '#f3c7c7', lineHeight: 1.45, marginBottom: '0.65rem' }}>
               {issueReportFeedback}
+            </div>
+          )}
+
+          {desktopBridgeStatus.checked && (
+            <div style={{ fontSize: '0.73rem', color: '#f3c7c7', lineHeight: 1.45, marginBottom: '0.65rem' }}>
+              Desktop-Bridge: <strong>{desktopBridgeLabel}</strong> ({desktopBridgeCapabilities})
+              {desktopBridgeStatus.error ? ` | Fehler: ${desktopBridgeStatus.error}` : ''}
             </div>
           )}
 

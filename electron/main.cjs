@@ -14,6 +14,7 @@ const HEALTH_POLL_MS = 600;
 let mainWindow = null;
 let stackStartedByDesktop = false;
 let desktopRuntime = null;
+let frontendBootInProgress = false;
 
 const ensureDesktopRuntime = () => {
   if (!app.isPackaged) {
@@ -249,6 +250,65 @@ const ensureStack = async () => {
   stackStartedByDesktop = true;
 };
 
+const BOOT_SCREEN_HTML = `
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flider startet...</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: #05070a;
+        color: #f5f5f5;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      .wrap {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .card {
+        text-align: center;
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 12px;
+        padding: 22px 28px;
+        background: rgba(255,255,255,0.04);
+      }
+      .title {
+        font-size: 18px;
+        font-weight: 650;
+        margin-bottom: 8px;
+      }
+      .sub {
+        font-size: 13px;
+        color: rgba(245,245,245,0.75);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <div class="title">Flider startet ...</div>
+        <div class="sub">Lokale Dienste werden vorbereitet.</div>
+      </div>
+    </div>
+  </body>
+</html>
+`;
+
+const loadBootScreen = async () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(BOOT_SCREEN_HTML)}`;
+  await mainWindow.loadURL(dataUrl);
+};
+
 const createMainWindow = async () => {
   mainWindow = new BrowserWindow({
     width: 1460,
@@ -261,7 +321,7 @@ const createMainWindow = async () => {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: false
     }
   });
 
@@ -270,7 +330,20 @@ const createMainWindow = async () => {
     return { action: 'deny' };
   });
 
-  await mainWindow.loadURL(FRONTEND_URL);
+  await loadBootScreen();
+};
+
+const bootFrontend = async () => {
+  if (frontendBootInProgress) return;
+  frontendBootInProgress = true;
+
+  try {
+    await ensureStack();
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    await mainWindow.loadURL(FRONTEND_URL);
+  } finally {
+    frontendBootInProgress = false;
+  }
 };
 
 app.on('window-all-closed', () => {
@@ -281,6 +354,7 @@ app.on('activate', async () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     try {
       await createMainWindow();
+      await bootFrontend();
     } catch {
       app.quit();
     }
@@ -328,11 +402,23 @@ ipcMain.handle('flider:save-issue-report', async (_event, payload) => {
   }
 });
 
+ipcMain.handle('flider:bridge-status', async () => ({
+  success: true,
+  isPackaged: Boolean(app.isPackaged),
+  runtimeRoot: desktopRuntime?.runtimeRoot || null,
+  stateDir: desktopRuntime?.stateDir || null,
+  timestamp: new Date().toISOString()
+}));
+
+ipcMain.on('flider:get-app-version', (event) => {
+  event.returnValue = app.getVersion();
+});
+
 app.whenReady().then(async () => {
   try {
     ensureDesktopRuntime();
-    await ensureStack();
     await createMainWindow();
+    await bootFrontend();
   } catch (error) {
     dialog.showErrorBox(
       'Flider konnte nicht starten',

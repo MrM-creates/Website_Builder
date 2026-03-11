@@ -30,6 +30,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@vitejs/plugin-react-swc": "^4.2.2",
     "basic-ftp": "^5.2.0",
     "concurrently": "^9.2.1",
     "cors": "^2.8.6",
@@ -44,7 +45,6 @@
     "@eslint/js": "^9.39.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react-swc": "^4.2.2",
     "electron": "^40.8.0",
     "electron-builder": "^26.0.12",
     "eslint": "^9.39.1",
