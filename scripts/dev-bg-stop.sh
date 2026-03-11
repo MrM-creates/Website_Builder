@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PID_DIR="$ROOT/.runtime/pids"
+RUNTIME_ROOT="${FLIDER_RUNTIME_ROOT:-$ROOT}"
+PID_DIR="$RUNTIME_ROOT/.runtime/pids"
 STACK_PID_FILE="$PID_DIR/stack.pid"
 SERVICE_PORTS=(3001 5173 8000)
 STACK_ORCHESTRATOR_PATTERNS=(

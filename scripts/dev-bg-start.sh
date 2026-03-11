@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-RUNTIME_DIR="$ROOT/.runtime"
+RUNTIME_ROOT="${FLIDER_RUNTIME_ROOT:-$ROOT}"
+RUNTIME_DIR="$RUNTIME_ROOT/.runtime"
 LOG_DIR="$RUNTIME_DIR/logs"
 PID_DIR="$RUNTIME_DIR/pids"
 STACK_PID_FILE="$PID_DIR/stack.pid"

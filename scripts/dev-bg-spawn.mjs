@@ -7,7 +7,10 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const root = path.resolve(__dirname, '..');
-const runtimeDir = path.join(root, '.runtime');
+const runtimeRoot = String(process.env.FLIDER_RUNTIME_ROOT || '').trim()
+  ? path.resolve(String(process.env.FLIDER_RUNTIME_ROOT || '').trim())
+  : root;
+const runtimeDir = path.join(runtimeRoot, '.runtime');
 const logDir = path.join(runtimeDir, 'logs');
 const pidDir = path.join(runtimeDir, 'pids');
 const stackPidFile = path.join(pidDir, 'stack.pid');

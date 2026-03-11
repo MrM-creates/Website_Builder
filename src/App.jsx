@@ -951,13 +951,18 @@ function App() {
         try {
           const ipcResult = await window.fliderDesktop.restartServices();
           restartAccepted = Boolean(ipcResult?.success);
+          if (!restartAccepted && ipcResult?.error) {
+            setIssueReportFeedback(String(ipcResult.error));
+          }
         } catch {
           restartAccepted = false;
         }
       }
 
       if (!restartAccepted) {
-        setIssueReportFeedback('Neustart konnte nicht gestartet werden. Bitte App kurz neu oeffnen.');
+        if (!issueReportFeedback) {
+          setIssueReportFeedback('Neustart konnte nicht gestartet werden. Bitte App kurz neu oeffnen.');
+        }
         return;
       }
 
