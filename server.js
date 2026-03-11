@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { Client } from 'basic-ftp';
 import SftpClient from 'ssh2-sftp-client';
-import { exec, execFileSync } from 'child_process';
+import { exec, execFileSync, spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -2980,6 +2980,7 @@ const listProjects = () => {
 const PRECHECK_DISK_WARNING_BYTES = 500 * 1024 * 1024; // 500 MB
 const PRECHECK_DISK_CRITICAL_BYTES = 100 * 1024 * 1024; // 100 MB
 const RUNTIME_PIDS_DIR = path.join(APP_ROOT, '.runtime', 'pids');
+let systemRecoveryInProgress = false;
 
 const buildPreflightCheck = ({
     id,
@@ -3225,6 +3226,40 @@ const probeRuntimePidFiles = () => {
     }
 };
 
+const startDetachedSystemRecovery = () => {
+    const scriptPath = path.join(APP_ROOT, 'scripts', 'dev-bg-ensure.sh');
+
+    // Primary path on macOS/Linux in local dev + packaged app (asar disabled).
+    if (process.platform !== 'win32' && fs.existsSync(scriptPath)) {
+        const child = spawn('bash', [scriptPath], {
+            cwd: APP_ROOT,
+            detached: true,
+            stdio: 'ignore',
+            env: process.env
+        });
+        child.unref();
+        return {
+            started: true,
+            pid: child.pid || null,
+            command: `bash ${scriptPath}`
+        };
+    }
+
+    // Fallback path.
+    const child = spawn('npm', ['run', 'dev:bg:ensure'], {
+        cwd: APP_ROOT,
+        detached: true,
+        stdio: 'ignore',
+        env: process.env
+    });
+    child.unref();
+    return {
+        started: true,
+        pid: child.pid || null,
+        command: 'npm run dev:bg:ensure'
+    };
+};
+
 app.get('/api/system/health', async (req, res) => {
     try {
         const [backend, frontend, kirby] = await Promise.all([
@@ -3405,6 +3440,51 @@ app.get('/api/system/preflight', async (req, res) => {
                 'npm run dev:bg:logs'
             ],
             error: String(error?.message || 'preflight failed')
+        });
+    }
+});
+
+app.post('/api/system/restart', express.json(), async (req, res) => {
+    if (systemRecoveryInProgress) {
+        return res.json({
+            success: true,
+            accepted: true,
+            inProgress: true,
+            message: 'System-Recovery laeuft bereits',
+            recoverySteps: [
+                'npm run dev:bg:status',
+                'npm run dev:bg:logs'
+            ]
+        });
+    }
+
+    try {
+        systemRecoveryInProgress = true;
+        const result = startDetachedSystemRecovery();
+
+        // Guard against repeated rapid restarts from UI clicks.
+        setTimeout(() => {
+            systemRecoveryInProgress = false;
+        }, 20000).unref?.();
+
+        return res.json({
+            success: true,
+            accepted: true,
+            inProgress: true,
+            message: 'System-Recovery wurde gestartet',
+            command: result.command,
+            pid: result.pid || null,
+            recoverySteps: [
+                'npm run dev:bg:status',
+                'npm run dev:bg:logs'
+            ]
+        });
+    } catch (error) {
+        systemRecoveryInProgress = false;
+        return res.status(500).json({
+            success: false,
+            errorCode: 'SRV_RESTART_FAILED',
+            error: String(error?.message || 'System-Recovery konnte nicht gestartet werden')
         });
     }
 });

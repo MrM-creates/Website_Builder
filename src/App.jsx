@@ -412,6 +412,7 @@ function App() {
   const [safeMode, setSafeMode] = useState(false);
   const [backendFailureCount, setBackendFailureCount] = useState(0);
   const [isRunningDiagnostics, setIsRunningDiagnostics] = useState(false);
+  const [isRestartingServices, setIsRestartingServices] = useState(false);
   const [diagnostics, setDiagnostics] = useState(null);
 
   // Refs
@@ -924,6 +925,54 @@ function App() {
       if (backendUp) setBackendFailureCount(0);
     } finally {
       setIsRunningDiagnostics(false);
+    }
+  };
+
+  const restartSystemServices = async () => {
+    if (isRestartingServices) return;
+    setIsRestartingServices(true);
+
+    try {
+      try {
+        await fetch(`${BACKEND_URL}/api/system/restart`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason: 'safe-mode-restart' }),
+        });
+      } catch {
+        // Backend may go down during restart trigger; continue with polling.
+      }
+
+      // Wait briefly for restart process to kick in.
+      await new Promise((resolve) => setTimeout(resolve, 1800));
+
+      // Poll health after restart. Exit early once all services are up.
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        await runSystemDiagnostics();
+
+        let allUp = false;
+        try {
+          const { data } = await fetchJsonWithTimeout(`${BACKEND_URL}/api/system/health`, {}, 2000);
+          allUp = Boolean(
+            data?.success === true &&
+            data?.health?.backend?.up &&
+            data?.health?.frontend?.up &&
+            data?.health?.kirby?.up
+          );
+        } catch {
+          allUp = false;
+        }
+
+        if (allUp) {
+          setSafeMode(false);
+          setBackendFailureCount(0);
+          break;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+      }
+    } finally {
+      setIsRestartingServices(false);
     }
   };
 
@@ -1886,7 +1935,7 @@ function App() {
             <button
               type="button"
               onClick={runSystemDiagnostics}
-              disabled={isRunningDiagnostics}
+              disabled={isRunningDiagnostics || isRestartingServices}
               style={{
                 background: '#ff4d4f',
                 border: 'none',
@@ -1895,8 +1944,8 @@ function App() {
                 borderRadius: '8px',
                 fontSize: '0.8rem',
                 fontWeight: 600,
-                cursor: isRunningDiagnostics ? 'not-allowed' : 'pointer',
-                opacity: isRunningDiagnostics ? 0.65 : 1
+                cursor: isRunningDiagnostics || isRestartingServices ? 'not-allowed' : 'pointer',
+                opacity: isRunningDiagnostics || isRestartingServices ? 0.65 : 1
               }}
             >
               {isRunningDiagnostics ? 'Diagnose läuft…' : 'Systemdiagnose starten'}
@@ -1904,8 +1953,8 @@ function App() {
 
             <button
               type="button"
-              onClick={runSystemDiagnostics}
-              disabled={isRunningDiagnostics}
+              onClick={restartSystemServices}
+              disabled={isRunningDiagnostics || isRestartingServices}
               style={{
                 background: 'transparent',
                 border: '1px solid rgba(255,255,255,0.25)',
@@ -1913,11 +1962,11 @@ function App() {
                 padding: '0.46rem 0.72rem',
                 borderRadius: '8px',
                 fontSize: '0.8rem',
-                cursor: isRunningDiagnostics ? 'not-allowed' : 'pointer',
-                opacity: isRunningDiagnostics ? 0.65 : 1
+                cursor: isRunningDiagnostics || isRestartingServices ? 'not-allowed' : 'pointer',
+                opacity: isRunningDiagnostics || isRestartingServices ? 0.65 : 1
               }}
             >
-              Erneut prüfen
+              {isRestartingServices ? 'Dienste werden neu gestartet…' : 'Dienste neu starten'}
             </button>
           </div>
 

@@ -70,6 +70,12 @@ Optional:
   - L2: betroffenen Dienst gezielt neu starten
   - L3: Root Cause + Monitoring-Regel
 
+- `SRV_RESTART_FAILED` (P1)
+  - Trigger: automatischer Neustart der Dienste konnte nicht gestartet werden
+  - L1: Diagnose erneut starten, App neu oeffnen
+  - L2: `dev:bg:ensure` manuell pruefen, Logs lesen
+  - L3: Restart-Orchestrierung fixen
+
 ## 5.2 Projekt/State
 
 - `PRJ_CONTEXT_MISMATCH` (P0)
@@ -218,4 +224,3 @@ Neue Error-Codes nur mit:
 2. Trigger,
 3. L1/L2/L3 Handlung,
 4. User-Text.
-
