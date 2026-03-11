@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flider.app/schemas/diagnostic-report.schema.json",
+  "title": "Flider Diagnostic Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "reportType",
+    "reportId",
+    "timestamp",
+    "app",
+    "environment",
+    "project",
+    "incident",
+    "services",
+    "recovery"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "reportType": {
+      "type": "string",
+      "const": "diagnostic-report"
+    },
+    "reportId": {
+      "type": "string",
+      "minLength": 8
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "build": { "type": ["string", "null"] },
+        "channel": { "type": ["string", "null"] }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "os"
+      ],
+      "properties": {
+        "os": { "type": "string", "minLength": 1 },
+        "arch": { "type": ["string", "null"] },
+        "runtime": { "type": ["string", "null"] },
+        "locale": { "type": ["string", "null"] },
+        "timezone": { "type": ["string", "null"] }
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": ["string", "null"] },
+        "path": { "type": "string", "minLength": 1 },
+        "signature": { "type": ["string", "null"] },
+        "lastSavedAt": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "incident": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "errorCode",
+        "severity",
+        "message",
+        "reproSteps"
+      ],
+      "properties": {
+        "errorCode": { "type": "string", "pattern": "^[A-Z]+_[A-Z0-9_]+$" },
+        "severity": { "type": "string", "enum": ["P0", "P1", "P2", "P3"] },
+        "message": { "type": "string", "minLength": 1 },
+        "httpStatus": { "type": ["integer", "null"], "minimum": 0, "maximum": 599 },
+        "requestId": { "type": ["string", "null"] },
+        "startedAt": { "type": ["string", "null"], "format": "date-time" },
+        "reproSteps": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "services": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backend",
+        "frontend",
+        "kirby"
+      ],
+      "properties": {
+        "backend": { "$ref": "#/$defs/serviceHealth" },
+        "frontend": { "$ref": "#/$defs/serviceHealth" },
+        "kirby": { "$ref": "#/$defs/serviceHealth" }
+      }
+    },
+    "recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "suggestedSteps"
+      ],
+      "properties": {
+        "suggestedSteps": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "actionsTried": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/recoveryAction" }
+        }
+      }
+    },
+    "attachments": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/attachment" }
+    }
+  },
+  "$defs": {
+    "serviceHealth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "up",
+        "status"
+      ],
+      "properties": {
+        "up": { "type": "boolean" },
+        "status": { "type": "integer", "minimum": 0, "maximum": 599 },
+        "latencyMs": { "type": ["integer", "null"], "minimum": 0 },
+        "error": { "type": ["string", "null"] }
+      }
+    },
+    "recoveryAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "at",
+        "result"
+      ],
+      "properties": {
+        "action": { "type": "string", "minLength": 1 },
+        "at": { "type": "string", "format": "date-time" },
+        "result": { "type": "string", "enum": ["success", "failed", "skipped"] },
+        "details": { "type": ["string", "null"] }
+      }
+    },
+    "attachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "label",
+        "path"
+      ],
+      "properties": {
+        "type": { "type": "string", "enum": ["log", "snapshot", "config", "other"] },
+        "label": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
+

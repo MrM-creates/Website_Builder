@@ -28,6 +28,16 @@ Wenn `localhost:5173` nicht erreichbar ist:
 1. `npm run dev:bg:stop`
 2. `npm run dev:bg`
 
+## Support und Incident Response
+
+- Verbindliches Support-Runbook (L1/L2/L3, SLA, Rollback, Preflight-Healthcheck):
+  - `docs/SUPPORT_RUNBOOK.md`
+- Error-Code-Katalog (Severity, Trigger, L1/L2/L3 Aktionen):
+  - `docs/SUPPORT_ERROR_CODES.md`
+- Diagnose-Protokoll (JSON-Schema + Beispiel):
+  - `docs/SUPPORT_DIAGNOSTICS_SCHEMA.md`
+  - `docs/schemas/diagnostic-report.schema.json`
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

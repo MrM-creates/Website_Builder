@@ -422,6 +422,7 @@ function App() {
   const lastPersistedContentSignatureRef = useRef('');
   const isResettingProjectRef = useRef(false);
   const saveQueueRef = useRef(Promise.resolve());
+  const startupPreflightDoneRef = useRef(false);
 
   const collectProjectState = () => ({
     projectName: projectName.trim(),
@@ -930,6 +931,38 @@ function App() {
     }
   };
 
+  const runStartupPreflight = async () => {
+    if (startupPreflightDoneRef.current) return;
+    startupPreflightDoneRef.current = true;
+
+    try {
+      const { response, data } = await fetchJsonWithTimeout(`${BACKEND_URL}/api/system/preflight`, {}, 3500);
+      if (!response?.ok || !data) return;
+
+      const issues = Array.isArray(data?.issues) ? data.issues : [];
+      const preflightDiagnostics = {
+        source: 'startup-preflight',
+        health: data?.health || null,
+        preflight: data?.preflight || null,
+        issues,
+        recoverySteps: Array.isArray(data?.recoverySteps) ? data.recoverySteps : [],
+      };
+
+      if (data?.success === true) {
+        setBackendFailureCount(0);
+        if (issues.length > 0) {
+          setDiagnostics(preflightDiagnostics);
+        }
+        return;
+      }
+
+      setDiagnostics(preflightDiagnostics);
+      setSafeMode(true);
+    } catch {
+      // fallback monitoring remains active
+    }
+  };
+
   /* ---- Effects ---- */
   useEffect(() => {
     if (editingPageId && editInputRef.current) {
@@ -987,6 +1020,7 @@ function App() {
     fetchProjectSignature();
     refreshProjects();
     fetchProjectPreferences();
+    runStartupPreflight().catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -1824,6 +1858,18 @@ function App() {
       diagnostics.health.kirby,
     ].filter(Boolean)
     : [];
+  const diagnosticPreflightChecks = diagnostics?.preflight?.checks
+    ? Object.values(diagnostics.preflight.checks).filter(Boolean)
+    : [];
+  const diagnosticIssues = Array.isArray(diagnostics?.issues) ? diagnostics.issues : [];
+  const safeModeHeadline =
+    diagnostics?.source === 'startup-preflight'
+      ? 'System-Preflight fehlgeschlagen'
+      : 'Server reagiert nicht stabil';
+  const safeModeDescription =
+    diagnosticIssues[0]?.message
+      ? String(diagnosticIssues[0].message)
+      : 'Backend war mehrfach nicht erreichbar. Starte die Systemdiagnose und folge den Recovery-Schritten.';
 
   /* ========================================================================
      RENDER
@@ -1844,11 +1890,9 @@ function App() {
           color: '#ffd6d6',
           boxShadow: '0 16px 42px rgba(0,0,0,0.55)'
         }}>
-          <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.4rem' }}>
-            Server reagiert nicht stabil
-          </div>
+          <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.4rem' }}>{safeModeHeadline}</div>
           <div style={{ color: '#ffbcbc', fontSize: '0.84rem', marginBottom: '0.75rem', lineHeight: 1.4 }}>
-            Backend war mehrfach nicht erreichbar. Starte die Systemdiagnose und folge den Recovery-Schritten.
+            {safeModeDescription}
           </div>
 
           <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
@@ -1915,6 +1959,50 @@ function App() {
                   </span>
                 );
               })}
+            </div>
+          )}
+
+          {diagnosticPreflightChecks.length > 0 && (
+            <div style={{ marginBottom: '0.7rem' }}>
+              <div style={{ fontSize: '0.74rem', color: '#f3c7c7', marginBottom: '0.34rem' }}>
+                Preflight:
+              </div>
+              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                {diagnosticPreflightChecks.map((check) => {
+                  const ok = Boolean(check?.ok);
+                  const label = String(check?.label || check?.id || 'check');
+                  return (
+                    <span
+                      key={String(check?.id || label)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.34rem',
+                        fontSize: '0.72rem',
+                        padding: '0.22rem 0.46rem',
+                        borderRadius: '999px',
+                        background: ok ? 'rgba(80,200,120,0.16)' : 'rgba(255,167,38,0.16)',
+                        color: ok ? '#9ff0bf' : '#ffd5a1',
+                        border: `1px solid ${ok ? 'rgba(80,200,120,0.32)' : 'rgba(255,167,38,0.32)'}`
+                      }}
+                      title={String(check?.message || '')}
+                    >
+                      <span>{label}</span>
+                      <strong>{ok ? 'OK' : 'WARN'}</strong>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {diagnosticIssues.length > 0 && (
+            <div style={{ fontSize: '0.74rem', color: '#f3c7c7', lineHeight: 1.45, marginBottom: '0.65rem' }}>
+              {diagnosticIssues.slice(0, 3).map((issue, index) => (
+                <div key={`${issue?.code || 'issue'}-${index}`}>
+                  <code>{String(issue?.code || 'ISSUE')}</code> {String(issue?.message || '')}
+                </div>
+              ))}
             </div>
           )}
 

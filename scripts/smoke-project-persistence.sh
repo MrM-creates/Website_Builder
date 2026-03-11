@@ -62,11 +62,13 @@ sync_pages() {
 
 save_state() {
   local project_id="$1"
-  local project_name="$2"
+  local project_path="$2"
+  local project_name="$3"
   local payload
-  payload="$(jq -n --arg id "$project_id" --arg name "$project_name" '
+  payload="$(jq -n --arg id "$project_id" --arg path "$project_path" --arg name "$project_name" '
 {
   projectId: $id,
+  projectPath: $path,
   state: {
     projectName: $name,
     selectedDesign: "minimalist",
@@ -143,7 +145,7 @@ fi
 echo "smoke: sync canonical pages for project A"
 open_project "$path_a"
 sync_pages '[{"slug":"portfolio","title":"Portfolio"},{"slug":"about","title":"About"},{"slug":"contact","title":"Contact"},{"slug":"alpha-extra","title":"Alpha Extra"}]'
-save_state "$id_a" "Smoke Alpha"
+save_state "$id_a" "$path_a" "Smoke Alpha"
 open_project "$path_a"
 assert_content_contains "alpha-extra"
 
@@ -183,7 +185,7 @@ fi
 echo "smoke: sync canonical pages for project B"
 open_project "$path_b"
 sync_pages '[{"slug":"portfolio","title":"Portfolio"},{"slug":"beta-extra","title":"Beta Extra"}]'
-save_state "$id_b" "Smoke Beta"
+save_state "$id_b" "$path_b" "Smoke Beta"
 open_project "$path_b"
 assert_content_contains "beta-extra"
 

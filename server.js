@@ -2977,6 +2977,254 @@ const listProjects = () => {
     return projects;
 };
 
+const PRECHECK_DISK_WARNING_BYTES = 500 * 1024 * 1024; // 500 MB
+const PRECHECK_DISK_CRITICAL_BYTES = 100 * 1024 * 1024; // 100 MB
+const RUNTIME_PIDS_DIR = path.join(APP_ROOT, '.runtime', 'pids');
+
+const buildPreflightCheck = ({
+    id,
+    label,
+    ok,
+    severity = 'info',
+    status = 'ok',
+    message = '',
+    details = {}
+} = {}) => ({
+    id: String(id || ''),
+    label: String(label || ''),
+    ok: Boolean(ok),
+    severity: String(severity || 'info'),
+    status: String(status || 'ok'),
+    message: String(message || ''),
+    details: details && typeof details === 'object' ? details : {}
+});
+
+const probeWritableDirectory = ({
+    id,
+    label,
+    targetPath = '',
+    required = false,
+    createIfMissing = true
+} = {}) => {
+    const normalizedTarget = String(targetPath || '').trim();
+
+    if (!normalizedTarget) {
+        return buildPreflightCheck({
+            id,
+            label,
+            ok: required === false,
+            severity: required ? 'critical' : 'warning',
+            status: 'missing',
+            message: required
+                ? 'Pfad fehlt und ist erforderlich'
+                : 'Pfad ist nicht gesetzt',
+            details: { path: '' }
+        });
+    }
+
+    try {
+        if (!fs.existsSync(normalizedTarget) && createIfMissing) {
+            fs.mkdirSync(normalizedTarget, { recursive: true });
+        }
+
+        if (!fs.existsSync(normalizedTarget) || !fs.statSync(normalizedTarget).isDirectory()) {
+            return buildPreflightCheck({
+                id,
+                label,
+                ok: false,
+                severity: required ? 'critical' : 'warning',
+                status: 'invalid',
+                message: 'Pfad existiert nicht als Ordner',
+                details: { path: normalizedTarget }
+            });
+        }
+
+        fs.accessSync(normalizedTarget, fs.constants.R_OK | fs.constants.W_OK);
+        const probeFile = path.join(
+            normalizedTarget,
+            `.flider-preflight-${Date.now()}-${process.pid}.tmp`
+        );
+        fs.writeFileSync(probeFile, 'ok', 'utf-8');
+        fs.rmSync(probeFile, { force: true });
+
+        return buildPreflightCheck({
+            id,
+            label,
+            ok: true,
+            status: 'ok',
+            message: 'Schreibrechte vorhanden',
+            details: { path: normalizedTarget }
+        });
+    } catch (error) {
+        return buildPreflightCheck({
+            id,
+            label,
+            ok: false,
+            severity: required ? 'critical' : 'warning',
+            status: 'permission-denied',
+            message: 'Ordner ist nicht beschreibbar',
+            details: {
+                path: normalizedTarget,
+                error: String(error?.message || 'permission denied')
+            }
+        });
+    }
+};
+
+const probeDiskFreeSpace = (targetPathInput = '') => {
+    const targetPath = String(targetPathInput || '').trim() || APP_ROOT;
+
+    if (typeof fs.statfsSync !== 'function') {
+        return buildPreflightCheck({
+            id: 'diskSpace',
+            label: 'Freier Speicher',
+            ok: true,
+            severity: 'warning',
+            status: 'unsupported',
+            message: 'Dateisystem-Check nicht verfuegbar',
+            details: { path: targetPath, freeBytes: null }
+        });
+    }
+
+    try {
+        const stats = fs.statfsSync(targetPath);
+        const freeBytes = Number(stats.bavail || 0) * Number(stats.bsize || 0);
+
+        if (!Number.isFinite(freeBytes) || freeBytes < 0) {
+            throw new Error('ungueltiger freier Speicherwert');
+        }
+
+        if (freeBytes < PRECHECK_DISK_CRITICAL_BYTES) {
+            return buildPreflightCheck({
+                id: 'diskSpace',
+                label: 'Freier Speicher',
+                ok: false,
+                severity: 'critical',
+                status: 'critical-low',
+                message: 'Sehr wenig freier Speicher verfuegbar',
+                details: {
+                    path: targetPath,
+                    freeBytes,
+                    warningBelow: PRECHECK_DISK_WARNING_BYTES,
+                    criticalBelow: PRECHECK_DISK_CRITICAL_BYTES
+                }
+            });
+        }
+
+        if (freeBytes < PRECHECK_DISK_WARNING_BYTES) {
+            return buildPreflightCheck({
+                id: 'diskSpace',
+                label: 'Freier Speicher',
+                ok: false,
+                severity: 'warning',
+                status: 'low',
+                message: 'Freier Speicher ist niedrig',
+                details: {
+                    path: targetPath,
+                    freeBytes,
+                    warningBelow: PRECHECK_DISK_WARNING_BYTES,
+                    criticalBelow: PRECHECK_DISK_CRITICAL_BYTES
+                }
+            });
+        }
+
+        return buildPreflightCheck({
+            id: 'diskSpace',
+            label: 'Freier Speicher',
+            ok: true,
+            status: 'ok',
+            message: 'Speicher ausreichend',
+            details: {
+                path: targetPath,
+                freeBytes,
+                warningBelow: PRECHECK_DISK_WARNING_BYTES,
+                criticalBelow: PRECHECK_DISK_CRITICAL_BYTES
+            }
+        });
+    } catch (error) {
+        return buildPreflightCheck({
+            id: 'diskSpace',
+            label: 'Freier Speicher',
+            ok: true,
+            severity: 'warning',
+            status: 'unknown',
+            message: 'Freier Speicher konnte nicht ermittelt werden',
+            details: {
+                path: targetPath,
+                error: String(error?.message || 'statfs failed')
+            }
+        });
+    }
+};
+
+const probeRuntimePidFiles = () => {
+    const staleFiles = [];
+
+    try {
+        if (!fs.existsSync(RUNTIME_PIDS_DIR)) {
+            return buildPreflightCheck({
+                id: 'runtimePidFiles',
+                label: 'Runtime Lock/PID Dateien',
+                ok: true,
+                status: 'ok',
+                message: 'Keine PID-Ordner gefunden',
+                details: { staleFiles: [] }
+            });
+        }
+
+        const entries = fs.readdirSync(RUNTIME_PIDS_DIR).filter((entry) => entry.endsWith('.pid'));
+        for (const entry of entries) {
+            const filePath = path.join(RUNTIME_PIDS_DIR, entry);
+            const rawPid = String(fs.readFileSync(filePath, 'utf-8') || '').trim();
+            const pid = Number(rawPid);
+
+            if (!Number.isInteger(pid) || pid <= 0) {
+                staleFiles.push(filePath);
+                continue;
+            }
+
+            try {
+                process.kill(pid, 0);
+            } catch (error) {
+                if (error?.code === 'ESRCH') {
+                    staleFiles.push(filePath);
+                }
+            }
+        }
+
+        if (staleFiles.length > 0) {
+            return buildPreflightCheck({
+                id: 'runtimePidFiles',
+                label: 'Runtime Lock/PID Dateien',
+                ok: false,
+                severity: 'warning',
+                status: 'stale',
+                message: 'Veraltete PID-Dateien erkannt',
+                details: { staleFiles }
+            });
+        }
+
+        return buildPreflightCheck({
+            id: 'runtimePidFiles',
+            label: 'Runtime Lock/PID Dateien',
+            ok: true,
+            status: 'ok',
+            message: 'Keine veralteten PID-Dateien',
+            details: { staleFiles: [] }
+        });
+    } catch (error) {
+        return buildPreflightCheck({
+            id: 'runtimePidFiles',
+            label: 'Runtime Lock/PID Dateien',
+            ok: true,
+            severity: 'warning',
+            status: 'unknown',
+            message: 'PID-Status konnte nicht geprueft werden',
+            details: { error: String(error?.message || 'pid check failed') }
+        });
+    }
+};
+
 app.get('/api/system/health', async (req, res) => {
     try {
         const [backend, frontend, kirby] = await Promise.all([
@@ -3018,6 +3266,145 @@ app.get('/api/system/health', async (req, res) => {
                 'npm run dev:bg:logs'
             ],
             error: String(error?.message || 'health-check failed')
+        });
+    }
+});
+
+app.get('/api/system/preflight', async (req, res) => {
+    try {
+        const [backend, frontend, kirby] = await Promise.all([
+            probeHttpService('backend', `${BACKEND_LOCAL_ORIGIN}/api/project-signature`, {
+                acceptedStatus: [200],
+                timeoutMs: 1800
+            }),
+            probeHttpService('frontend', `${FRONTEND_LOCAL_ORIGIN}/`, {
+                acceptedStatus: [200],
+                timeoutMs: 1800
+            }),
+            probeHttpService('kirby', `${KIRBY_LOCAL_ORIGIN}/`, {
+                acceptedStatus: [200, 302],
+                timeoutMs: 2200
+            })
+        ]);
+
+        const preferences = getProjectPreferences();
+        const activeRef = getActiveProjectRef();
+        const defaultProjectsRoot = String(preferences.defaultProjectsRoot || '').trim();
+        const activeProjectPath = String(activeRef.projectPath || '').trim();
+        const diskProbePath = activeProjectPath || defaultProjectsRoot || FLIDER_RUNTIME_ROOT || APP_ROOT;
+
+        const checks = {
+            defaultProjectsRoot: probeWritableDirectory({
+                id: 'defaultProjectsRoot',
+                label: 'Standard-Projektordner',
+                targetPath: defaultProjectsRoot,
+                required: false
+            }),
+            activeProjectPath: probeWritableDirectory({
+                id: 'activeProjectPath',
+                label: 'Aktives Projekt',
+                targetPath: activeProjectPath,
+                required: Boolean(activeProjectPath)
+            }),
+            diskSpace: probeDiskFreeSpace(diskProbePath),
+            runtimePidFiles: probeRuntimePidFiles()
+        };
+
+        const healthChecks = [backend, frontend, kirby];
+        const servicesHealthy = healthChecks.every((service) => service.up === true);
+        const preflightChecks = Object.values(checks);
+
+        const issues = [];
+        if (!servicesHealthy) {
+            issues.push({
+                code: 'SRV_UNHEALTHY',
+                severity: 'P1',
+                message: 'Mindestens ein lokaler Dienst ist nicht erreichbar'
+            });
+        }
+
+        for (const check of preflightChecks) {
+            if (check.ok === true) continue;
+
+            if (check.id === 'diskSpace' && check.status === 'critical-low') {
+                issues.push({
+                    code: 'FS_DISK_LOW',
+                    severity: 'P1',
+                    message: check.message
+                });
+                continue;
+            }
+
+            if (
+                (check.id === 'activeProjectPath' || check.id === 'defaultProjectsRoot') &&
+                check.status === 'permission-denied'
+            ) {
+                issues.push({
+                    code: 'FS_PERMISSION_DENIED',
+                    severity: check.id === 'activeProjectPath' ? 'P1' : 'P2',
+                    message: check.message
+                });
+                continue;
+            }
+
+            if (check.id === 'runtimePidFiles') {
+                issues.push({
+                    code: 'SRV_UNHEALTHY',
+                    severity: 'P2',
+                    message: check.message
+                });
+            }
+        }
+
+        const hasBlockingIssue =
+            servicesHealthy === false ||
+            preflightChecks.some(
+                (check) =>
+                    check.ok === false &&
+                    (check.severity === 'critical' ||
+                        (check.id === 'activeProjectPath' && check.severity !== 'warning'))
+            );
+
+        const recoverySteps = hasBlockingIssue
+            ? [
+                'npm run dev:bg:ensure',
+                'npm run dev:bg:status',
+                'npm run dev:bg:logs'
+            ]
+            : [];
+
+        res.json({
+            success: !hasBlockingIssue,
+            health: { backend, frontend, kirby },
+            preflight: {
+                checkedAt: new Date().toISOString(),
+                checks,
+                context: {
+                    defaultProjectsRoot: defaultProjectsRoot || null,
+                    activeProjectPath: activeProjectPath || null
+                }
+            },
+            issues,
+            recoverySteps
+        });
+    } catch (error) {
+        res.json({
+            success: false,
+            health: null,
+            preflight: null,
+            issues: [
+                {
+                    code: 'SRV_UNHEALTHY',
+                    severity: 'P1',
+                    message: String(error?.message || 'Preflight fehlgeschlagen')
+                }
+            ],
+            recoverySteps: [
+                'npm run dev:bg:ensure',
+                'npm run dev:bg:status',
+                'npm run dev:bg:logs'
+            ],
+            error: String(error?.message || 'preflight failed')
         });
     }
 });
