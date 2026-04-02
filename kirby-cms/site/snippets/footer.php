@@ -45,6 +45,40 @@ if ($line3Value !== '') {
         $line3Link = $normalizeLink($line3Value);
     }
 }
+
+$toRelativePath = function ($url) {
+    $raw = trim((string)($url ?? ''));
+    if ($raw === '') return '/';
+    if (str_starts_with($raw, '/')) return $raw;
+    $parts = parse_url($raw);
+    if ($parts === false) return $raw;
+    $path = $parts['path'] ?? '/';
+    if ($path === '') $path = '/';
+    if (!str_starts_with($path, '/')) {
+        $path = '/' . ltrim($path, '/');
+    }
+    if (isset($parts['query']) && $parts['query'] !== '') {
+        $path .= '?' . $parts['query'];
+    }
+    if (isset($parts['fragment']) && $parts['fragment'] !== '') {
+        $path .= '#' . $parts['fragment'];
+    }
+    return $path;
+};
+
+$legalLinks = [];
+foreach ([
+    'impressum' => 'Impressum',
+    'datenschutz' => 'Datenschutz'
+] as $slug => $label) {
+    $legalPage = $site->find($slug);
+    if ($legalPage) {
+        $legalLinks[] = [
+            'label' => $label,
+            'url' => $toRelativePath($legalPage->url())
+        ];
+    }
+}
 ?>
 
 <!-- Footer -->
@@ -80,6 +114,14 @@ if ($line3Value !== '') {
                     <?= html($line3Value) ?>
                 <?php endif ?>
             </p>
+        <?php endif ?>
+
+        <?php if (count($legalLinks) > 0): ?>
+            <nav class="footer-legal-links" aria-label="Rechtliches">
+                <?php foreach ($legalLinks as $index => $link): ?>
+                    <a href="<?= esc($link['url'], 'attr') ?>"><?= html($link['label']) ?></a><?= $index < count($legalLinks) - 1 ? '<span class="footer-legal-separator">·</span>' : '' ?>
+                <?php endforeach ?>
+            </nav>
         <?php endif ?>
     </div>
 </footer>

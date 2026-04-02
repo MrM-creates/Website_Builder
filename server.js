@@ -552,6 +552,190 @@ const sanitizeSlug = (value = '') =>
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '');
 
+const SYSTEM_PAGE_SPECS = [
+    { key: 'impressum', slug: 'impressum', title: 'Impressum' },
+    { key: 'datenschutz', slug: 'datenschutz', title: 'Datenschutz' }
+];
+
+const SYSTEM_PAGE_SLUGS = new Set(SYSTEM_PAGE_SPECS.map((spec) => spec.slug));
+
+const normalizeMultilineFieldValue = (value = '') =>
+    String(value ?? '')
+        .replace(/\r\n/g, '\n')
+        .trim();
+
+const parseKirbyContentFields = (content = '') => {
+    const sections = String(content ?? '')
+        .replace(/\r\n/g, '\n')
+        .split(/\n\s*----\s*\n/g);
+
+    const fields = {};
+    for (const section of sections) {
+        const trimmed = section.trim();
+        if (!trimmed) continue;
+
+        const firstLineEnd = trimmed.indexOf('\n');
+        const firstLine = firstLineEnd >= 0 ? trimmed.slice(0, firstLineEnd) : trimmed;
+        const body = firstLineEnd >= 0 ? trimmed.slice(firstLineEnd + 1).replace(/^\n+/, '') : '';
+        const headerMatch = firstLine.match(/^([A-Za-z0-9_-]+):\s*(.*)$/);
+        if (!headerMatch) continue;
+
+        const key = String(headerMatch[1] || '').trim();
+        const firstLineValue = String(headerMatch[2] || '');
+        const combinedValue = body ? `${firstLineValue}\n${body}` : firstLineValue;
+        fields[key] = combinedValue.trim();
+    }
+
+    return fields;
+};
+
+const stringifyKirbyContentFields = (entries = [], { multilineKeys = new Set() } = {}) => {
+    const sections = [];
+
+    for (const [rawKey, rawValue] of entries) {
+        const key = String(rawKey || '').trim();
+        if (!key) continue;
+
+        if (multilineKeys.has(key)) {
+            const value = normalizeMultilineFieldValue(rawValue);
+            sections.push(value ? `${key}:\n${value}` : `${key}:`);
+            continue;
+        }
+
+        sections.push(`${key}: ${normalizeSingleLineFieldValue(rawValue)}`);
+    }
+
+    if (!sections.length) return '';
+    return `${sections.join('\n\n----\n\n')}\n`;
+};
+
+const buildSystemPageContentFile = ({ title = '', text = '' } = {}) =>
+    stringifyKirbyContentFields(
+        [
+            ['Title', normalizeSingleLineFieldValue(title) || 'Seite'],
+            ['Text', normalizeMultilineFieldValue(text)],
+            ['Layout', '[]']
+        ],
+        { multilineKeys: new Set(['Text']) }
+    );
+
+const getDefaultSystemPagesPayload = () => ({
+    impressum: { enabled: false, content: '' },
+    datenschutz: { enabled: false, content: '' }
+});
+
+const normalizeSystemPagesPayload = (raw = {}) => {
+    const input = raw && typeof raw === 'object' ? raw : {};
+    const normalized = getDefaultSystemPagesPayload();
+
+    for (const spec of SYSTEM_PAGE_SPECS) {
+        const pageInput = input?.[spec.key] && typeof input[spec.key] === 'object' ? input[spec.key] : {};
+        normalized[spec.key] = {
+            enabled: Boolean(pageInput.enabled),
+            content: normalizeMultilineFieldValue(pageInput.content || '')
+        };
+    }
+
+    return normalized;
+};
+
+const findSystemPageDirName = (contentRoot, slug) => {
+    const safeSlug = sanitizeSlug(slug);
+    if (!safeSlug) return '';
+
+    const exactDir = path.join(contentRoot, safeSlug);
+    if (fs.existsSync(exactDir) && fs.statSync(exactDir).isDirectory()) {
+        return safeSlug;
+    }
+
+    return findExistingPageDirName(contentRoot, safeSlug) || '';
+};
+
+const readSystemPageFromContent = (contentRoot, spec) => {
+    const dirName = findSystemPageDirName(contentRoot, spec.slug);
+    if (!dirName) {
+        return { enabled: false, content: '', slug: spec.slug, title: spec.title };
+    }
+
+    const txtPath = path.join(contentRoot, dirName, 'default.txt');
+    if (!fs.existsSync(txtPath)) {
+        return { enabled: false, content: '', slug: spec.slug, title: spec.title };
+    }
+
+    try {
+        const raw = fs.readFileSync(txtPath, 'utf-8');
+        const fields = parseKirbyContentFields(raw);
+        return {
+            enabled: true,
+            content: normalizeMultilineFieldValue(fields.Text || ''),
+            slug: spec.slug,
+            title: normalizeSingleLineFieldValue(fields.Title || spec.title) || spec.title
+        };
+    } catch {
+        return { enabled: false, content: '', slug: spec.slug, title: spec.title };
+    }
+};
+
+const readSystemPagesFromContent = (contentRoot) => {
+    const payload = getDefaultSystemPagesPayload();
+    for (const spec of SYSTEM_PAGE_SPECS) {
+        const page = readSystemPageFromContent(contentRoot, spec);
+        payload[spec.key] = {
+            enabled: page.enabled,
+            content: page.content
+        };
+    }
+    return payload;
+};
+
+const writeSystemPagesToContent = (contentRoot, rawPayload = {}) => {
+    if (!fs.existsSync(contentRoot)) {
+        fs.mkdirSync(contentRoot, { recursive: true });
+    }
+
+    const normalized = normalizeSystemPagesPayload(rawPayload);
+    const written = {};
+
+    for (const spec of SYSTEM_PAGE_SPECS) {
+        const pageState = normalized[spec.key];
+        const existingDir = findSystemPageDirName(contentRoot, spec.slug);
+
+        if (!pageState.enabled) {
+            // Only remove dedicated unlisted system dirs. Never delete listed user pages.
+            if (existingDir && existingDir === spec.slug) {
+                fs.rmSync(path.join(contentRoot, existingDir), { recursive: true, force: true });
+            }
+            written[spec.key] = { enabled: false, content: '' };
+            continue;
+        }
+
+        const targetDirName = existingDir || spec.slug;
+        const targetDir = path.join(contentRoot, targetDirName);
+        fs.mkdirSync(targetDir, { recursive: true });
+        fs.writeFileSync(
+            path.join(targetDir, 'default.txt'),
+            buildSystemPageContentFile({ title: spec.title, text: pageState.content }),
+            'utf-8'
+        );
+
+        written[spec.key] = {
+            enabled: true,
+            content: pageState.content
+        };
+    }
+
+    return written;
+};
+
+const isSystemPageDirName = (value = '') => {
+    const rawName = String(value || '').trim();
+    if (!rawName) return false;
+    const listedMatch = rawName.match(/^(\d+)_([\s\S]+)$/);
+    const slugSource = listedMatch?.[2] || rawName;
+    const slug = sanitizeSlug(slugSource);
+    return SYSTEM_PAGE_SLUGS.has(slug);
+};
+
 const normalizeOnboardingPages = (rawPages = []) => {
     const normalizedPages = [];
     const seen = new Set();
@@ -756,6 +940,7 @@ const syncPagesInContent = (
     const orphanDirs = dirs.filter((entry) => {
         if (!entry || entry.startsWith('.')) return false;
         if (entry === 'error' || entry === PROJECT_RECOVERY_DIR_NAME) return false;
+        if (isSystemPageDirName(entry)) return false;
         if (usedDirs.has(entry)) return false;
         if (renameFromSet.has(entry)) return false;
         return true;
@@ -848,6 +1033,7 @@ const hardResetPagesInContent = (contentRoot, rawPages = []) => {
 
         if (entry.isDirectory()) {
             if (entry.name === 'error') continue;
+            if (isSystemPageDirName(entry.name)) continue;
             fs.rmSync(absolute, { recursive: true, force: true });
             continue;
         }
@@ -1506,7 +1692,12 @@ const listPublicPagePaths = (contentRoot) => {
         .filter(Boolean)
         .map((slug) => `/${slug}`);
 
-    return ['/', ...new Set(listedPages)];
+    const systemPages = SYSTEM_PAGE_SPECS
+        .map((spec) => readSystemPageFromContent(contentRoot, spec))
+        .filter((page) => page.enabled)
+        .map((page) => `/${page.slug}`);
+
+    return ['/', ...new Set([...listedPages, ...systemPages])];
 };
 
 const normalizePathForFileOutput = (pathname = '/') => {
@@ -2699,7 +2890,8 @@ const saveProjectAtPath = (projectPathInput, statePayload = {}) => {
         hasOwn('siteLogoUrl') ||
         hasOwn('footerLine1') ||
         hasOwn('footerLine2') ||
-        hasOwn('footerLine3');
+        hasOwn('footerLine3') ||
+        hasOwn('legalPages');
 
     if (containsMetaPayload) {
         try {
@@ -2711,6 +2903,10 @@ const saveProjectAtPath = (projectPathInput, statePayload = {}) => {
                 footerLine2: hasOwn('footerLine2') ? String(rawStatePayload.footerLine2 ?? '') : currentMeta.footerLine2,
                 footerLine3: hasOwn('footerLine3') ? String(rawStatePayload.footerLine3 ?? '') : currentMeta.footerLine3
             });
+
+            if (hasOwn('legalPages')) {
+                writeSystemPagesToContent(LIVE_CONTENT_DIR, rawStatePayload.legalPages);
+            }
         } catch (error) {
             console.warn('Site-Meta konnte vor Snapshot nicht aktualisiert werden:', error?.message || error);
         }
@@ -2785,6 +2981,10 @@ const collectCanonicalPagesFromContent = (
 
     const candidates = [];
     dirs.forEach((dirName, index) => {
+        if (isSystemPageDirName(dirName)) {
+            return;
+        }
+
         const listedMatch = dirName.match(/^(\d+)_([\s\S]+)$/);
         const isLegacyDir = /-legacy(?:-\d+)?$/i.test(dirName);
         const hasDefaultTemplate = fs.existsSync(path.join(contentRoot, dirName, 'default.txt'));
@@ -2940,63 +3140,137 @@ const listProjects = () => {
 
     const projects = [];
     const nextHistory = [];
+    const seenIds = new Set();
+    const seenPaths = new Set();
     let historyChanged = false;
     let activeChanged = false;
+    let activeSeen = false;
+
+    const addProjectRecord = ({ manifest, entry = null } = {}) => {
+        if (!manifest) return false;
+
+        const projectPath = normalizeProjectPath(manifest.path || entry?.path || '');
+        const manifestId = ensureStableProjectId(manifest.id || entry?.id);
+        const dedupeKeyId = normalizeProjectId(manifestId);
+
+        if (dedupeKeyId && seenIds.has(dedupeKeyId)) return false;
+        if (seenPaths.has(projectPath)) return false;
+
+        const isActiveCandidate = activeRef.projectId
+            ? manifestId === activeRef.projectId
+            : activeRef.projectPath
+                ? projectPath === activeRef.projectPath
+                : false;
+
+        if (dedupeKeyId) seenIds.add(dedupeKeyId);
+        seenPaths.add(projectPath);
+        if (isActiveCandidate) activeSeen = true;
+
+        const name = String(manifest.name || entry?.name || path.basename(projectPath) || 'Unbenanntes Projekt').trim() || 'Unbenanntes Projekt';
+        const createdAt = manifest.createdAt || entry?.createdAt || null;
+        const updatedAt = manifest.updatedAt || entry?.updatedAt || null;
+
+        nextHistory.push({
+            id: manifestId,
+            name,
+            path: projectPath,
+            createdAt,
+            updatedAt
+        });
+
+        projects.push({
+            id: manifestId,
+            name,
+            path: projectPath,
+            createdAt,
+            updatedAt,
+            isActive: isActiveCandidate
+        });
+
+        return true;
+    };
+
     for (const entry of history.projects) {
         try {
             const projectPath = normalizeProjectPath(entry.path);
-            if (!fs.existsSync(projectManifestPath(projectPath))) continue;
+            if (!fs.existsSync(projectManifestPath(projectPath))) {
+                historyChanged = true;
+                continue;
+            }
             const manifest = readProjectManifest(projectPath, { migrate: true });
-            if (!manifest) continue;
-            const manifestId = ensureStableProjectId(manifest.id);
-            const state = readJsonFileOrNull(projectStatePath(projectPath)) || {};
-            const stateProjectName = String(state?.projectName || '').trim();
-            const manifestName = String(manifest?.name || '').trim();
-            const autoDirName = path.basename(projectPath || '');
-            const isActiveCandidate = activeRef.projectId
-                ? manifestId === activeRef.projectId
-                : activeRef.projectPath
-                    ? projectPath === activeRef.projectPath
-                    : false;
-
-            // Hide aborted placeholder projects (created by "Neues Projekt" + cancel)
-            // from the recent list to prevent list growth.
-            const isAbortedAutoDraft =
-                AUTO_PROJECT_DIR_PATTERN.test(autoDirName) &&
-                AUTO_PROJECT_DIR_PATTERN.test(manifestName) &&
-                stateProjectName.length === 0 &&
-                state?.setupDone !== true &&
-                state?.isLive !== true;
-
-            if (isAbortedAutoDraft && !isActiveCandidate) {
+            if (!manifest) {
                 historyChanged = true;
                 continue;
             }
-            if (isAbortedAutoDraft && isActiveCandidate) {
-                historyChanged = true;
-                activeChanged = true;
-                continue;
-            }
-
-            nextHistory.push({
-                id: manifestId,
-                name: manifest.name || entry.name || path.basename(projectPath) || 'Unbenanntes Projekt',
-                path: projectPath,
-                createdAt: manifest.createdAt || entry.createdAt || null,
-                updatedAt: manifest.updatedAt || entry.updatedAt || null
-            });
-
-            projects.push({
-                id: manifestId,
-                name: manifest.name || entry.name || path.basename(projectPath) || 'Unbenanntes Projekt',
-                path: projectPath,
-                createdAt: manifest.createdAt || null,
-                updatedAt: manifest.updatedAt || entry.updatedAt || null,
-                isActive: isActiveCandidate
-            });
+            addProjectRecord({ manifest, entry });
         } catch {
             // ignore invalid history entries
         }
+    }
+
+    // Recovery pass: include projects that exist on disk but were trimmed from history.
+    // This prevents "Projekt fortsetzen" entries from disappearing after restarts.
+    const uiConfig = readUiConfig();
+    const discoveryRoots = new Set();
+    const pushDiscoveryRoot = (rootPath = '') => {
+        const raw = String(rootPath || '').trim();
+        if (!raw) return;
+        try {
+            const normalized = normalizeProjectPath(raw);
+            if (!fs.existsSync(normalized) || !fs.statSync(normalized).isDirectory()) return;
+            discoveryRoots.add(normalized);
+        } catch {
+            // ignore invalid roots
+        }
+    };
+
+    pushDiscoveryRoot(uiConfig.defaultProjectsRoot);
+    pushDiscoveryRoot(uiConfig.lastPickerPath);
+    for (const entry of history.projects) {
+        try {
+            pushDiscoveryRoot(path.dirname(normalizeProjectPath(entry.path)));
+        } catch {
+            // ignore invalid history entries
+        }
+    }
+    if (activeRef.projectPath) {
+        try {
+            pushDiscoveryRoot(path.dirname(normalizeProjectPath(activeRef.projectPath)));
+        } catch {
+            // ignore invalid active project path
+        }
+    }
+
+    for (const rootPath of discoveryRoots) {
+        let dirEntries = [];
+        try {
+            dirEntries = fs.readdirSync(rootPath, { withFileTypes: true });
+        } catch {
+            continue;
+        }
+
+        for (const dirEntry of dirEntries) {
+            try {
+                if (!dirEntry?.isDirectory?.()) continue;
+                const name = String(dirEntry.name || '').trim();
+                if (!name || name.startsWith('.') || name.startsWith('_')) continue;
+
+                const candidatePath = path.join(rootPath, name);
+                const manifest = readProjectManifest(candidatePath, { migrate: true });
+                if (!manifest) continue;
+
+                const added = addProjectRecord({ manifest });
+                if (added) {
+                    historyChanged = true;
+                }
+            } catch {
+                // ignore broken folder entries
+            }
+        }
+    }
+
+    if ((activeRef.projectId || activeRef.projectPath) && !activeSeen) {
+        activeChanged = true;
     }
 
     projects.sort((a, b) => {
@@ -4632,21 +4906,50 @@ app.post('/api/deploy', async (req, res) => {
 
 // ENDPOINT: UPDATE THEME VARIABLES (CSS Manipulation)
 app.post('/api/update-theme', (req, res) => {
-    const { font, fontHeading, fontBody, colorPrimary, colorBg, colorText } = req.body;
+    const {
+        font,
+        fontDisplay,
+        fontHeading,
+        fontBody,
+        colorPrimary,
+        colorAccent,
+        colorBg,
+        colorSurface,
+        colorText,
+        colorTextSecondary,
+        colorBorder,
+        radiusSm,
+        radiusMd,
+        radiusLg,
+        radiusPill,
+        shadowXs,
+        shadowSm
+    } = req.body;
     const cssPath = LIVE_CUSTOM_CSS_PATH;
     const resolvedBodyFont = fontBody || font || '"Inter", sans-serif';
     const resolvedHeadingFont = fontHeading || font || '"Inter", sans-serif';
+    const resolvedDisplayFont = fontDisplay || resolvedHeadingFont;
 
     // This simulates injecting Flatsite's choices into the Kirby Theme
     const cssContent = `:root {
   --color-primary: ${colorPrimary || '#000'};
+  --color-accent: ${colorAccent || colorPrimary || '#000'};
   --color-background: ${colorBg || '#fff'};
+  --color-surface: ${colorSurface || '#fff'};
   --color-text: ${colorText || '#000'};
+  --color-text-secondary: ${colorTextSecondary || '#666'};
+  --color-border: ${colorBorder || '#d1d5db'};
   --font-family: ${resolvedBodyFont};
+  --font-display: ${resolvedDisplayFont};
   --color-bg: var(--color-background);
-  --color-accent: var(--color-primary);
   --font-primary: ${resolvedBodyFont};
   --font-heading: ${resolvedHeadingFont};
+  --radius-sm: ${radiusSm || '6px'};
+  --radius-md: ${radiusMd || '10px'};
+  --radius-lg: ${radiusLg || '14px'};
+  --radius-pill: ${radiusPill || '999px'};
+  --shadow-xs: ${shadowXs || 'none'};
+  --shadow-sm: ${shadowSm || 'none'};
 }`;
 
     try {
@@ -4704,6 +5007,28 @@ app.get('/api/site-meta', (req, res) => {
     } catch (err) {
         console.error('Fehler beim Laden der Site-Metadaten:', err);
         res.status(500).json({ error: 'Site-Metadaten konnten nicht geladen werden' });
+    }
+});
+
+app.get('/api/legal-pages', (req, res) => {
+    try {
+        const pages = readSystemPagesFromContent(LIVE_CONTENT_DIR);
+        res.json({ success: true, pages });
+    } catch (err) {
+        console.error('Fehler beim Laden der Rechtliches-Seiten:', err);
+        res.status(500).json({ success: false, error: 'Rechtliches-Seiten konnten nicht geladen werden' });
+    }
+});
+
+app.post('/api/legal-pages', express.json(), async (req, res) => {
+    const payload = req.body?.pages ?? req.body?.legalPages ?? {};
+
+    try {
+        const written = await withLiveContentLock(() => writeSystemPagesToContent(LIVE_CONTENT_DIR, payload));
+        res.json({ success: true, pages: written });
+    } catch (err) {
+        console.error('Fehler beim Speichern der Rechtliches-Seiten:', err);
+        res.status(500).json({ success: false, error: 'Rechtliches-Seiten konnten nicht gespeichert werden' });
     }
 });
 

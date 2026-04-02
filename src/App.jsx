@@ -11,42 +11,91 @@ const DESIGN_STYLES = {
   minimal_swiss: {
     name: 'Minimal Swiss',
     description: 'Klar, präzise, ruhig',
+    summary: 'Klar, ruhig und präzise. Ideal für seriöse, inhaltsstarke Websites.',
+    details: [
+      'Reduzierte Oberfläche mit klarer Hierarchie und hoher Lesbarkeit.',
+      'Typografie: Inter für Display, Heading und Body.',
+      'Farbakzente: Primary #0F4C81, Accent #D97706.',
+      'Formensprache: sharp_softened, Radius 4px, Schatten: none.',
+    ],
     previewClass: '',
     themeClass: '',
   },
   modern_editorial: {
     name: 'Modern Editorial',
     description: 'Editorial, modern, glaubwürdig',
+    summary: 'Editorial und modern. Wirkt hochwertig, ruhig und vertrauensvoll.',
+    details: [
+      'Editorial-Anmutung mit eleganter Display-Schrift und klarer Struktur.',
+      'Typografie: Cormorant Garamond (Display), Inter für Heading/Body.',
+      'Farbakzente: Primary #1F2937, Accent #8B5E3C.',
+      'Formensprache: refined, Radius 2px, Schatten: none.',
+    ],
     previewClass: '',
     themeClass: '',
   },
   warm_human: {
     name: 'Warm Human',
     description: 'Warm, freundlich, zugänglich',
+    summary: 'Warm und nahbar. Perfekt für persönliche Marken und Services.',
+    details: [
+      'Freundliche Farbwelt mit weichen Flächen und einladendem Gesamtbild.',
+      'Typografie: Outfit für Display/Heading, Inter für Body.',
+      'Farbakzente: Primary #E58E73, Accent #9BC4BC.',
+      'Formensprache: soft, Radius 16px, Schatten: xs.',
+    ],
     previewClass: '',
     themeClass: '',
   },
   bold_startup: {
     name: 'Bold Startup',
     description: 'Kontraststark, dynamisch, mutig',
+    summary: 'Mutig und energiegeladen. Für Produkte mit klarer, starker Präsenz.',
+    details: [
+      'Dunkle, kontrastreiche Oberfläche mit klaren Akzenten für Calls-to-Action.',
+      'Typografie: Space Grotesk für Display/Heading, Inter für Body.',
+      'Farbakzente: Primary #7C3AED, Accent #22C55E.',
+      'Formensprache: clean_modern, Radius 12px, Schatten: sm.',
+    ],
     previewClass: '',
     themeClass: '',
   },
   premium_luxury: {
     name: 'Premium Luxury',
     description: 'Elegant, hochwertig, klassisch',
+    summary: 'Elegant und zeitlos. Für Premium-Marken mit klassischem Anspruch.',
+    details: [
+      'Ruhige Premium-Anmutung mit dezenten Kontrasten und viel Weissraum.',
+      'Typografie: Cormorant Garamond (Display), Inter für Heading/Body.',
+      'Farbakzente: Primary #2C221C, Accent #A67C52.',
+      'Formensprache: understated, Radius 4px, Schatten: none.',
+    ],
     previewClass: '',
     themeClass: '',
   },
   creative_playful: {
     name: 'Creative Playful',
     description: 'Lebendig, kreativ, auffällig',
+    summary: 'Ausdrucksstark und kreativ. Für starke visuelle Differenzierung.',
+    details: [
+      'Lebendige Farbwelt mit hoher Energie und klarer visueller Persönlichkeit.',
+      'Typografie: Space Grotesk für Display/Heading, Inter für Body.',
+      'Farbakzente: Primary #FF6B35, Accent #3A86FF.',
+      'Formensprache: playful_controlled, Radius 16px, Schatten: sm.',
+    ],
     previewClass: '',
     themeClass: '',
   },
   natural_organic: {
     name: 'Natural Organic',
     description: 'Natürlich, ruhig, geerdet',
+    summary: 'Erdig, ruhig und glaubwürdig. Für Marken mit Nachhaltigkeits-, Food-, Natur- oder Wellbeing-Fokus.',
+    details: [
+      'Markenwerte: Authentizität, Erdung, Natur, Ruhe, Vertrauen.',
+      'Geeignet für: Sustainability, Food, Wellbeing, Craft und Nature Brands.',
+      'Do: Materialität nutzen, erdige Palette strukturiert halten, Lesbarkeit priorisieren.',
+      'Don’t: keine Eco-Klischees, nicht alles beige, keine Lesbarkeit opfern.',
+    ],
     previewClass: '',
     themeClass: '',
   },
@@ -73,7 +122,31 @@ const DESIGN_VIBES = {
     { id: 'CP-01', label: 'Kuratierte Variante', displayFont: '"Space Grotesk", sans-serif', headingFont: '"Space Grotesk", sans-serif', bodyFont: '"Inter", sans-serif', bg: '#FFF9F1', surface: '#FFFFFF', text: '#1F2937', textSecondary: '#475569', primary: '#FF6B35', accent: '#3A86FF', border: '#FFD8C2' },
   ],
   natural_organic: [
-    { id: 'NO-01', label: 'Kuratierte Variante', displayFont: '"Fraunces", serif', headingFont: '"Inter", sans-serif', bodyFont: '"Inter", sans-serif', bg: '#F6F3EA', surface: '#FFFDF8', text: '#2E2A24', textSecondary: '#5F5A53', primary: '#6B7A52', accent: '#B08968', border: '#DDD5C8' },
+    {
+      id: 'NO-01',
+      label: 'Kuratierte Variante',
+      displayFont: '"Fraunces", serif',
+      headingFont: '"Inter", sans-serif',
+      bodyFont: '"Inter", sans-serif',
+      bg: '#F6F3EA',
+      surface: '#FFFDF8',
+      text: '#2E2A24',
+      textSecondary: '#5F5A53',
+      primary: '#6B7A52',
+      accent: '#B08968',
+      border: '#DDD5C8',
+      focus: '#556B2F',
+      success: '#4F772D',
+      warning: '#BC6C25',
+      error: '#9C4A3C',
+      radiusSm: '6px',
+      radiusMd: '10px',
+      radiusLg: '14px',
+      radiusXl: '20px',
+      radiusPill: '10px',
+      shadowXs: '0 2px 4px rgba(46, 42, 36, 0.04), 0 1px 2px rgba(46, 42, 36, 0.06)',
+      shadowSm: '0 4px 10px rgba(46, 42, 36, 0.06), 0 2px 6px rgba(46, 42, 36, 0.08)',
+    },
   ],
 };
 
@@ -96,6 +169,46 @@ const getSelectedVibe = (styleKey, vibeId) =>
   getVibesForStyle(styleKey).find((v) => v.id === vibeId) || getDefaultVibeForStyle(styleKey);
 const getVibeByLegacyIndex = (styleKey, legacyIndex = 0) =>
   getVibesForStyle(styleKey)[Number(legacyIndex) || 0] || getDefaultVibeForStyle(styleKey);
+const buildThemePayloadFromVibe = (designKey, vibe = null) => ({
+  design: designKey,
+  vibeId: vibe?.id,
+  fontDisplay: vibe?.displayFont,
+  fontHeading: vibe?.headingFont,
+  fontBody: vibe?.bodyFont,
+  colorPrimary: vibe?.primary || vibe?.accent,
+  colorAccent: vibe?.accent || vibe?.primary,
+  colorBg: vibe?.bg,
+  colorSurface: vibe?.surface,
+  colorText: vibe?.text,
+  colorTextSecondary: vibe?.textSecondary,
+  colorBorder: vibe?.border,
+  radiusSm: vibe?.radiusSm,
+  radiusMd: vibe?.radiusMd,
+  radiusLg: vibe?.radiusLg,
+  radiusPill: vibe?.radiusPill,
+  shadowXs: vibe?.shadowXs,
+  shadowSm: vibe?.shadowSm,
+});
+const normalizeHexColor = (value = '') => {
+  const raw = String(value || '').trim().replace('#', '');
+  if (raw.length === 3) {
+    return `#${raw.split('').map((char) => `${char}${char}`).join('').toUpperCase()}`;
+  }
+  if (raw.length === 6) {
+    return `#${raw.toUpperCase()}`;
+  }
+  return '';
+};
+const isDarkHexColor = (value = '') => {
+  const hex = normalizeHexColor(value);
+  if (!hex) return false;
+
+  const r = Number.parseInt(hex.slice(1, 3), 16);
+  const g = Number.parseInt(hex.slice(3, 5), 16);
+  const b = Number.parseInt(hex.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance < 0.56;
+};
 const normalizeWebsiteUrlInput = (value = '') => {
   const raw = String(value ?? '').trim();
   if (!raw) return '';
@@ -146,13 +259,6 @@ const withDefaultIfBlank = (value, fallback = '') => {
 const normalizeFtpUserFromState = (state = {}) => {
   const fallback = TEST_HOSTING_DEFAULTS.ftpUser;
   const value = withDefaultIfBlank(state?.ftpUser, fallback);
-  const provider = String(state?.hostingProvider || '').trim().toLowerCase();
-
-  // Guard against legacy cross-field corruption in Hostpoint projects
-  if (provider === 'hostpoint' && !String(value).includes('@')) {
-    return fallback;
-  }
-
   return value;
 };
 
@@ -161,6 +267,114 @@ const DEFAULT_PAGES = [
   { id: 'about', title: 'Über mich', selected: true },
   { id: 'contact', title: 'Kontakt', selected: true },
 ];
+
+const LEGAL_PAGE_DEFINITIONS = [
+  { key: 'impressum', label: 'Impressum' },
+  { key: 'datenschutz', label: 'Datenschutz' },
+];
+
+const createDefaultLegalPagesState = () => ({
+  impressum: { enabled: false, content: '' },
+  datenschutz: { enabled: false, content: '' },
+});
+
+const normalizeLegalPagesState = (raw = {}) => {
+  const input = raw && typeof raw === 'object' ? raw : {};
+  const next = createDefaultLegalPagesState();
+
+  for (const definition of LEGAL_PAGE_DEFINITIONS) {
+    const value = input?.[definition.key] && typeof input[definition.key] === 'object'
+      ? input[definition.key]
+      : {};
+
+    next[definition.key] = {
+      enabled: Boolean(value.enabled),
+      content: String(value.content || ''),
+    };
+  }
+
+  return next;
+};
+
+const buildLegalTemplateText = (
+  pageKey,
+  {
+    projectName = '',
+    websiteUrl = '',
+    contactEmail = '',
+  } = {}
+) => {
+  const safeProjectName = String(projectName || '').trim() || '[Name / Firma]';
+  const safeWebsiteUrl = String(websiteUrl || '').trim() || '[https://deine-domain.ch]';
+  const safeContactEmail = String(contactEmail || '').trim() || '[deine-email@example.com]';
+  const today = new Date().toLocaleDateString('de-CH');
+
+  if (pageKey === 'impressum') {
+    return [
+      'Hinweis',
+      'Diese Vorlage ersetzt keine Rechtsberatung. Bitte vor Veröffentlichung rechtlich prüfen lassen.',
+      '',
+      'Angaben gemäss Art. 3 Abs. 1 lit. s UWG (Schweiz)',
+      safeProjectName,
+      '[Vorname Nachname / Firma]',
+      '[Straße und Hausnummer]',
+      '[PLZ Ort]',
+      'Schweiz',
+      '',
+      'Kontakt',
+      `E-Mail: ${safeContactEmail}`,
+      `Website: ${safeWebsiteUrl}`,
+      '',
+      'Vertretungsberechtigte Person',
+      '[Vorname Nachname]',
+      '',
+      'Haftungsausschluss',
+      'Die Inhalte dieser Website wurden mit Sorgfalt erstellt. Für die Richtigkeit, Vollständigkeit und Aktualität der Inhalte wird jedoch keine Gewähr übernommen.',
+      '',
+      'Urheberrechte',
+      'Alle Inhalte, Bilder und Texte auf dieser Website sind urheberrechtlich geschützt. Eine Verwendung ohne ausdrückliche Zustimmung ist nicht gestattet.',
+      '',
+      `Stand: ${today}`,
+    ].join('\n');
+  }
+
+  return [
+    'Hinweis',
+    'Diese Vorlage ersetzt keine Rechtsberatung. Bitte vor Veröffentlichung rechtlich prüfen lassen.',
+    '',
+    '1. Verantwortliche Stelle',
+    safeProjectName,
+    `[Kontakt: ${safeContactEmail}]`,
+    '',
+    '2. Allgemeines zur Datenbearbeitung',
+    'Wir bearbeiten personenbezogene Daten vertraulich und entsprechend der gesetzlichen Datenschutzvorschriften der Schweiz (revDSG).',
+    '',
+    '3. Erhebung und Bearbeitung personenbezogener Daten',
+    'Wir bearbeiten Daten, die beim Besuch dieser Website oder bei einer Kontaktaufnahme freiwillig übermittelt werden.',
+    '',
+    '4. Server-Logfiles',
+    'Beim Zugriff auf diese Website können technische Daten wie IP-Adresse, Datum/Uhrzeit, Browsertyp und aufgerufene Seiten gespeichert werden.',
+    '',
+    '5. Kontaktaufnahme',
+    'Wenn du uns per E-Mail kontaktierst, werden deine Angaben zur Bearbeitung der Anfrage gespeichert.',
+    '',
+    '6. Weitergabe an Dritte',
+    'Eine Weitergabe personenbezogener Daten erfolgt nur, wenn dies gesetzlich erlaubt ist oder du eingewilligt hast.',
+    '',
+    '7. Speicherdauer',
+    'Personenbezogene Daten werden nur so lange aufbewahrt, wie es für den jeweiligen Zweck erforderlich ist oder gesetzliche Aufbewahrungspflichten bestehen.',
+    '',
+    '8. Rechte betroffener Personen',
+    'Du hast das Recht auf Auskunft, Berichtigung, Löschung sowie auf Einschränkung der Bearbeitung im Rahmen der gesetzlichen Bestimmungen.',
+    '',
+    `9. Website: ${safeWebsiteUrl}`,
+    '',
+    '10. Änderungen',
+    'Wir können diese Datenschutzerklärung jederzeit anpassen. Es gilt die jeweils aktuelle Version auf dieser Website.',
+    '',
+    `Stand: ${today}`,
+  ].join('\n');
+};
 
 const TEST_HOSTING_DEFAULTS = {
   hostingProvider: 'other',
@@ -187,7 +401,7 @@ const CONNECTION_TYPES = {
 };
 
 const HOSTING_PROVIDER_PRESETS = {
-  hostpoint: { id: 'hostpoint', label: 'Hostpoint', connectionType: 'ftpes', port: '21', server: 'sl91.web.hostpoint.ch', targetPath: '/' },
+  hostpoint: { id: 'hostpoint', label: 'Hostpoint', connectionType: 'ftpes', port: '21', server: '', targetPath: '/' },
   infomaniak: { id: 'infomaniak', label: 'Infomaniak', connectionType: 'ftpes', port: '21', server: 'ftp.infomaniak.com', targetPath: '/' },
   cyon: { id: 'cyon', label: 'Cyon', connectionType: 'sftp', port: '22', server: 'ssh.cyon.ch', targetPath: '/' },
   metanet: { id: 'metanet', label: 'Metanet', connectionType: 'ftpes', port: '21', server: 'ftp.metanet.ch', targetPath: '/' },
@@ -207,7 +421,7 @@ const mapDeployErrorToUserMessage = (raw = '') => {
   if (!message) return 'Upload fehlgeschlagen. Bitte Daten prüfen und erneut versuchen.';
   if (lower.includes('fehlende ftp credentials')) return 'Benutzername oder Passwort fehlt. Bitte die Hosting-Daten prüfen.';
   if (lower.includes('530') || lower.includes('authentication failed') || lower.includes('login incorrect')) {
-    return 'Login fehlgeschlagen. Benutzername oder Passwort sind nicht korrekt.';
+    return 'Login fehlgeschlagen. Bitte Benutzername/Passwort sowie FTP-Server und Verbindungsart prüfen.';
   }
   if (lower.includes('getaddrinfo') || lower.includes('enotfound') || lower.includes('eai_again')) {
     return 'Server-Adresse wurde nicht gefunden. Bitte die Server-Adresse prüfen.';
@@ -235,68 +449,141 @@ const mapDeployErrorToUserMessage = (raw = '') => {
 };
 
 /* ==========================================================================
-   FLATSITE – Mini Website Preview Component
+   FLATSITE – Live Preview Component (Full-size)
    ========================================================================== */
 
-function MiniSitePreview({ styleKey, vibe }) {
+function StyleGuideSnapshot({ styleKey, vibe }) {
   const style = DESIGN_STYLES[styleKey];
   const color = vibe || getDefaultVibeForStyle(styleKey);
-  const isDark = color?.bg?.toLowerCase() < '#888';
-  const navBorder = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)';
-  const heroImgBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+  const isDark = isDarkHexColor(color?.bg);
+  const borderColor = color?.border || (isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.1)');
+  const subtleText = color?.textSecondary || (isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.58)');
+  const focusColor = color?.focus || color?.primary || '#4B5563';
+  const radiusMd = color?.radiusMd || '10px';
+  const radiusLg = color?.radiusLg || '20px';
+  const radiusPill = color?.radiusPill || '500px';
+  const headingFont = color?.headingFont || '"Inter", sans-serif';
+  const bodyFont = color?.bodyFont || '"Inter", sans-serif';
+  const displayFont = color?.displayFont || headingFont;
+  const surface = color?.surface || '#FFFFFF';
+  const primaryIsDark = isDarkHexColor(color?.primary);
+
   return (
-    <div className={`mini-site-preview ${style?.previewClass || ''}`} style={{
-      borderRadius: '8px', overflow: 'hidden', aspectRatio: '16/10',
-      border: '1px solid var(--border-color)',
-      background: color?.bg || '#fff',
-      color: color?.text || '#111',
-      fontFamily: color?.bodyFont || '"Inter", sans-serif',
-      transition: 'background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease'
-    }}>
-      {/* Mini Nav */}
-      <div className="ms-nav" style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        padding: '8px 12px', fontSize: '7px', borderBottom: `1px solid ${navBorder}`
-      }}>
-        <div className="ms-logo" style={{ fontWeight: 'bold', fontSize: '8px', color: color?.text || '#111', fontFamily: color?.headingFont }}>
-          Logo
-        </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <div style={{ width: '20px', height: '3px', background: color?.text || '#111', opacity: 0.4, borderRadius: '2px' }}></div>
-          <div style={{ width: '20px', height: '3px', background: color?.text || '#111', opacity: 0.4, borderRadius: '2px' }}></div>
-          <div style={{ width: '20px', height: '3px', background: color?.text || '#111', opacity: 0.4, borderRadius: '2px' }}></div>
-        </div>
+    <div
+      className="style-snapshot"
+      style={{
+        '--ss-bg': color?.bg || '#F5F5F5',
+        '--ss-surface': surface,
+        '--ss-text': color?.text || '#111111',
+        '--ss-subtle': subtleText,
+        '--ss-border': borderColor,
+        '--ss-primary': color?.primary || '#4B5563',
+        '--ss-accent': color?.accent || '#9CA3AF',
+        '--ss-focus': focusColor,
+        '--ss-heading-font': headingFont,
+        '--ss-body-font': bodyFont,
+        '--ss-display-font': displayFont,
+        '--ss-radius-md': radiusMd,
+        '--ss-radius-lg': radiusLg,
+        '--ss-radius-pill': radiusPill,
+        '--ss-shadow-xs': color?.shadowXs || 'none',
+        '--ss-shadow-sm': color?.shadowSm || 'none',
+        '--ss-primary-text': primaryIsDark ? '#FFFFFF' : (color?.text || '#111111'),
+      }}
+    >
+      <div className="style-snapshot-grid">
+        <section className="style-snapshot-card">
+          <h4 className="style-snapshot-title">Markenfarben</h4>
+          <div className="style-swatch-row">
+            <span className="style-swatch style-swatch-primary" />
+            <div>
+              <p className="style-swatch-label">Primäre Akzentfarbe</p>
+              <p className="style-swatch-hex">Hex: {color?.primary || '-'}</p>
+            </div>
+          </div>
+          <div className="style-swatch-row">
+            <span className="style-swatch style-swatch-accent" />
+            <div>
+              <p className="style-swatch-label">Sekundäre Akzentfarbe</p>
+              <p className="style-swatch-hex">Hex: {color?.accent || '-'}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="style-snapshot-card">
+          <h4 className="style-snapshot-title">Text &amp; Flächen</h4>
+          <div className="style-swatch-row">
+            <span className="style-swatch style-swatch-text" />
+            <div>
+              <p className="style-swatch-label">Text dunkel</p>
+              <p className="style-swatch-hex">Hex: {color?.text || '-'}</p>
+            </div>
+          </div>
+          <div className="style-swatch-row">
+            <span className="style-swatch style-swatch-surface" />
+            <div>
+              <p className="style-swatch-label">Hintergrundfläche</p>
+              <p className="style-swatch-hex">Hex: {surface}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="style-snapshot-card">
+          <h4 className="style-snapshot-title">Typografie</h4>
+          <div className="style-type-block">
+            <div className="style-type-row">
+              <span className="style-type-label">Überschrift</span>
+              <span className="style-type-font">{String(displayFont).replace(/['"]/g, '').split(',')[0]}</span>
+            </div>
+            <p className="style-type-aa style-type-aa-heading">Aa</p>
+            <p className="style-type-sentence style-type-sentence-heading">Franz jagt im komplett verwahrlosten Taxi quer durch Bayern.</p>
+          </div>
+          <div className="style-type-divider" />
+          <div className="style-type-block">
+            <div className="style-type-row">
+              <span className="style-type-label">Fliesstext</span>
+              <span className="style-type-font">{String(bodyFont).replace(/['"]/g, '').split(',')[0]}</span>
+            </div>
+            <p className="style-type-aa style-type-aa-body">Aa</p>
+            <p className="style-type-sentence style-type-sentence-body">Zwölf Boxkämpfer jagen Eva quer durch Sylt.</p>
+          </div>
+        </section>
+
+        <section className="style-snapshot-card">
+          <h4 className="style-snapshot-title">UI-Komponenten</h4>
+          <p className="style-ui-label">Buttons</p>
+          <div className="style-ui-buttons">
+            <button type="button" className="style-ui-btn style-ui-btn-primary">Primäre Aktion</button>
+            <button type="button" className="style-ui-btn style-ui-btn-secondary">Sekundär</button>
+          </div>
+          <p className="style-ui-label">Eingabefelder</p>
+          <div className="style-ui-input">Standard-Eingabefeld</div>
+          <div className="style-ui-input style-ui-input-focus">Fokus / Aktiv</div>
+        </section>
       </div>
-      {/* Mini Hero Section */}
-      <div className="ms-hero" style={{ display: 'flex', gap: '8px', padding: '10px 12px', flex: 1 }}>
-        <div className="ms-hero-text" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '4px' }}>
-          <div className="ms-title" style={{ width: '70%', height: '10px', background: color?.text || '#111', opacity: 0.8, borderRadius: '2px' }}></div>
-          <div className="ms-subtitle" style={{ width: '50%', height: '5px', background: color?.text || '#111', opacity: 0.3, borderRadius: '2px' }}></div>
-        </div>
-        <div className="ms-hero-img" style={{ flex: 1, background: heroImgBg, borderRadius: '4px' }}></div>
-      </div>
-      {/* Color accent bar */}
-      <div style={{ height: '4px', background: color?.accent || '#000', marginTop: 'auto' }}></div>
+      <p className="style-snapshot-footer">{style?.name || 'Stil'} · Kuratierte Token-Vorschau</p>
     </div>
   );
 }
 
-/* ==========================================================================
-   FLATSITE – Live Preview Component (Full-size)
-   ========================================================================== */
-
-function LivePreview({ styleKey, vibe, projectName }) {
+function LivePreview({ styleKey, vibe, projectName, logoUrl = '', compact = false }) {
   const style = DESIGN_STYLES[styleKey];
   const color = vibe || getDefaultVibeForStyle(styleKey);
-  const isDark = color?.bg?.toLowerCase() < '#888';
-  const subtleText = isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.5)';
-  const cardBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
-  const heroBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
-  const navBorder = isDark ? `2px solid ${color?.accent || '#fff'}` : `1px solid rgba(0,0,0,0.08)`;
+  const isDark = isDarkHexColor(color?.bg);
+  const subtleText = color?.textSecondary || (isDark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.58)');
+  const cardBg = color?.surface || (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)');
+  const heroBg = color?.surface || (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)');
+  const navBorder = `1px solid ${color?.border || (isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.08)')}`;
+  const primaryIsDark = isDarkHexColor(color?.primary);
+  const controlRadius = color?.radiusMd || color?.radiusPill || '999px';
+  const blockRadius = color?.radiusLg || '14px';
+  const shadowXs = color?.shadowXs || 'none';
+  const shadowSm = color?.shadowSm || shadowXs;
+
   return (
-    <div className={`live-preview-container ${style?.themeClass || ''}`} style={{
+    <div className={`live-preview-container ${compact ? 'lp-compact' : ''} ${style?.themeClass || ''}`} style={{
       borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)',
-      minHeight: '300px',
+      minHeight: compact ? '0' : '300px',
       background: color?.bg || '#fff',
       color: color?.text || '#111',
       fontFamily: color?.bodyFont || '"Inter", sans-serif',
@@ -304,7 +591,35 @@ function LivePreview({ styleKey, vibe, projectName }) {
     }}>
       {/* Navigation */}
       <div className="lp-nav" style={{ borderBottom: navBorder }}>
-        <div className="lp-logo" style={{ color: color?.accent || '#000', fontFamily: color?.headingFont }}>{projectName || 'Mein Portfolio'}</div>
+        <div className="lp-brand">
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt="Website-Logo"
+              className="lp-logo-image"
+              onError={(event) => {
+                event.currentTarget.style.display = 'none';
+                const fallbackLabel = event.currentTarget.parentElement?.querySelector('.lp-logo');
+                if (fallbackLabel) {
+                  fallbackLabel.style.display = 'block';
+                }
+              }}
+              style={{
+                imageRendering: 'auto',
+              }}
+            />
+          ) : null}
+          <div
+            className="lp-logo"
+            style={{
+              color: color?.primary || color?.text || '#111',
+              fontFamily: color?.displayFont || color?.headingFont,
+              display: logoUrl ? 'none' : 'block',
+            }}
+          >
+            {projectName || 'Mein Portfolio'}
+          </div>
+        </div>
         <div className="lp-links">
           <span className="lp-link" style={{ color: color?.text || '#111', fontFamily: color?.bodyFont }}>Portfolio</span>
           <span className="lp-link" style={{ color: color?.text || '#111', fontFamily: color?.bodyFont }}>Über mich</span>
@@ -315,23 +630,35 @@ function LivePreview({ styleKey, vibe, projectName }) {
       <div className="lp-main">
         <div className="lp-hero">
           <div className="lp-hero-content">
-            <h1 className="lp-h1" style={{ color: color?.text || '#111', fontFamily: color?.headingFont }}>Willkommen</h1>
+            <h1 className="lp-h1" style={{ color: color?.text || '#111', fontFamily: color?.displayFont || color?.headingFont }}>Willkommen</h1>
             <p className="lp-p" style={{ color: subtleText, fontFamily: color?.bodyFont }}>Entdecke meine Arbeiten und lass dich inspirieren.</p>
-            <button className="lp-btn" style={{
-              borderColor: color?.accent || '#000', color: isDark ? (color?.bg || '#111') : '#fff',
-              background: color?.accent || '#000',
-              transition: 'all 0.3s ease',
-            }}>Mehr erfahren</button>
+            <div className="lp-btn-row">
+              <button className="lp-btn" style={{
+                borderColor: color?.primary || '#000',
+                color: primaryIsDark ? '#fff' : (color?.text || '#111'),
+                background: color?.primary || '#000',
+                borderRadius: controlRadius,
+                boxShadow: shadowXs,
+                transition: 'all 0.3s ease',
+              }}>Primäre Aktion</button>
+              <button className="lp-btn-secondary" style={{
+                borderColor: color?.border || color?.primary || '#000',
+                color: color?.primary || '#000',
+                background: 'transparent',
+                borderRadius: controlRadius,
+                transition: 'all 0.3s ease',
+              }}>Sekundär</button>
+            </div>
           </div>
-          <div className="lp-hero-image" style={{ minHeight: '200px', background: heroBg, color: subtleText }}>
+          <div className="lp-hero-image" style={{ minHeight: '200px', background: heroBg, color: subtleText, border: `1px solid ${color?.border || 'rgba(0,0,0,0.08)'}`, borderRadius: blockRadius, boxShadow: shadowXs }}>
             Bild
           </div>
         </div>
         {/* Grid */}
         <div className="lp-feature-grid">
-          <div className="lp-card" style={{ background: cardBg }}></div>
-          <div className="lp-card" style={{ background: cardBg }}></div>
-          <div className="lp-card" style={{ background: cardBg }}></div>
+          <div className="lp-card" style={{ background: cardBg, border: `1px solid ${color?.border || 'rgba(0,0,0,0.08)'}`, borderRadius: blockRadius, boxShadow: shadowXs }}></div>
+          <div className="lp-card" style={{ background: cardBg, border: `1px solid ${color?.border || 'rgba(0,0,0,0.08)'}`, borderRadius: blockRadius, boxShadow: shadowXs }}></div>
+          <div className="lp-card" style={{ background: cardBg, border: `1px solid ${color?.border || 'rgba(0,0,0,0.08)'}`, borderRadius: blockRadius, boxShadow: shadowXs }}></div>
         </div>
       </div>
     </div>
@@ -416,6 +743,7 @@ function App() {
   const [footerLine1, setFooterLine1] = useState('');
   const [footerLine2, setFooterLine2] = useState('');
   const [footerLine3, setFooterLine3] = useState('');
+  const [legalPages, setLegalPages] = useState(createDefaultLegalPagesState);
 
   // UI state
   const [showExportModal, setShowExportModal] = useState(false);
@@ -491,11 +819,32 @@ function App() {
     footerLine1,
     footerLine2,
     footerLine3,
+    legalPages,
     setupDone,
     isLive,
     lastPublishedViewUrl,
     lastPublishedSignature,
   });
+
+  const normalizeProjectNameValue = (value = '') => {
+    const trimmed = String(value ?? '').trim();
+    if (!trimmed) return '';
+
+    const normalized = trimmed
+      .toLowerCase()
+      .replace(/[.]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const placeholderNames = new Set([
+      'unknown',
+      'unbekannt',
+      'unbekanntes projekt',
+      'unbenanntes projekt',
+    ]);
+
+    return placeholderNames.has(normalized) ? '' : trimmed;
+  };
 
   const isPanelSiteOverviewPath = (pathname = '') => {
     const normalized = String(pathname || '').replace(/\/+$/g, '');
@@ -515,7 +864,7 @@ function App() {
   const applyProjectState = (state = {}) => {
     isApplyingProjectStateRef.current = true;
 
-    setProjectName(String(state.projectName || ''));
+    setProjectName(normalizeProjectNameValue(state.projectName));
     setSiteLogoUrl(String(state.siteLogoUrl || ''));
     setSiteLogoError('');
     const resolvedDesign = normalizeDesignStyleKey(state.selectedDesign || DEFAULT_DESIGN_STYLE);
@@ -532,9 +881,15 @@ function App() {
     setSelectedVibeId(resolvedVibeId);
     const resolvedPort = String(state.ftpPort ?? TEST_HOSTING_DEFAULTS.ftpPort);
     const resolvedConnectionType = String(state.connectionType || inferConnectionTypeFromPort(resolvedPort));
-    setHostingProvider(String(state.hostingProvider || TEST_HOSTING_DEFAULTS.hostingProvider));
+    const resolvedHostingProvider = String(state.hostingProvider || TEST_HOSTING_DEFAULTS.hostingProvider);
+    const resolvedFtpServer = String(state.ftpServer ?? TEST_HOSTING_DEFAULTS.ftpServer);
+    const isLegacyHostpointDefaultServer =
+      resolvedHostingProvider.trim().toLowerCase() === 'hostpoint' &&
+      resolvedFtpServer.trim().toLowerCase() === 'sl91.web.hostpoint.ch';
+
+    setHostingProvider(resolvedHostingProvider);
     setConnectionType(resolvedConnectionType);
-    setFtpServer(String(state.ftpServer ?? TEST_HOSTING_DEFAULTS.ftpServer));
+    setFtpServer(isLegacyHostpointDefaultServer ? '' : resolvedFtpServer);
     setFtpUser(normalizeFtpUserFromState(state));
     setFtpPassword(String(state.ftpPassword ?? TEST_HOSTING_DEFAULTS.ftpPassword));
     setFtpPort(resolvedPort);
@@ -543,6 +898,7 @@ function App() {
     setFooterLine1(String(state.footerLine1 ?? ''));
     setFooterLine2(String(state.footerLine2 ?? ''));
     setFooterLine3(String(state.footerLine3 ?? ''));
+    setLegalPages(normalizeLegalPagesState(state.legalPages));
     setSetupDone(Boolean(state.setupDone));
     setIsLive(Boolean(state.isLive));
     setLastPublishedViewUrl(String(state.lastPublishedViewUrl || ''));
@@ -740,6 +1096,24 @@ function App() {
     }
   };
 
+  const fetchLegalPagesFromKirbyContent = async ({ applyState = true } = {}) => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/legal-pages`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        return createDefaultLegalPagesState();
+      }
+
+      const normalized = normalizeLegalPagesState(data.pages);
+      if (applyState) {
+        setLegalPages(normalized);
+      }
+      return normalized;
+    } catch {
+      return createDefaultLegalPagesState();
+    }
+  };
+
   const syncPagesToKirby = async (pagesInput = pages) => {
     const payloadPages = (Array.isArray(pagesInput) ? pagesInput : [])
       .filter((p) => p?.selected !== false)
@@ -856,6 +1230,17 @@ function App() {
       } catch {
         // ignore site meta fallback errors
       }
+
+      try {
+        const legalFromContent = await fetchLegalPagesFromKirbyContent({ applyState: false });
+        if (Object.prototype.hasOwnProperty.call(loadedState, 'legalPages')) {
+          loadedState.legalPages = normalizeLegalPagesState(loadedState.legalPages);
+        } else {
+          loadedState.legalPages = legalFromContent;
+        }
+      } catch {
+        loadedState.legalPages = normalizeLegalPagesState(loadedState.legalPages);
+      }
       let contentPages = await fetchPagesFromKirbyContent({ applyState: false });
       const hasSavedPages = Array.isArray(loadedState.pages) && loadedState.pages.length > 0;
 
@@ -871,9 +1256,7 @@ function App() {
       if ((contentPages.length || hasSavedPages) && !loadedState.setupDone) {
         loadedState.setupDone = true;
       }
-      if (!String(loadedState.projectName || '').trim() && String(data.project?.name || '').trim()) {
-        loadedState.projectName = String(data.project.name);
-      }
+      loadedState.projectName = normalizeProjectNameValue(loadedState.projectName);
       applyProjectState(loadedState);
       setPages(canonicalPages);
       setShowProjectList(false);
@@ -1720,6 +2103,7 @@ function App() {
     footerLine1,
     footerLine2,
     footerLine3,
+    legalPages,
     setupDone,
     isLive,
     lastPublishedViewUrl,
@@ -1747,6 +2131,46 @@ function App() {
 
     return () => clearTimeout(timer);
   }, [step, projectName, siteLogoUrl, footerLine1, footerLine2, footerLine3]);
+
+  useEffect(() => {
+    if (step !== 'editor' || isApplyingProjectStateRef.current || isResettingProjectRef.current) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      fetch(`${BACKEND_URL}/api/legal-pages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pages: normalizeLegalPagesState(legalPages),
+        }),
+      }).catch(() => {});
+    }, 360);
+
+    return () => clearTimeout(timer);
+  }, [step, legalPages]);
+
+  useEffect(() => {
+    if (
+      step !== 'editor' ||
+      !currentProjectId ||
+      isApplyingProjectStateRef.current ||
+      isResettingProjectRef.current
+    ) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      const vibe = getSelectedVibe(selectedDesign, selectedVibeId);
+      fetch(`${BACKEND_URL}/api/update-theme`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildThemePayloadFromVibe(selectedDesign, vibe)),
+      }).catch(() => {});
+    }, 280);
+
+    return () => clearTimeout(timer);
+  }, [step, currentProjectId, selectedDesign, selectedVibeId]);
 
   useEffect(() => {
     if (!currentProjectId || step !== 'editor' || !projectSignature || isResettingProjectRef.current) return;
@@ -1917,6 +2341,7 @@ function App() {
     setFooterLine1('');
     setFooterLine2('');
     setFooterLine3('');
+    setLegalPages(createDefaultLegalPagesState());
     setSetupDone(false);
     setKirbyReady(false);
     setIsLive(false);
@@ -1933,11 +2358,19 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: 'Meine Website',
+          title: '',
           siteLogoUrl: '',
           footerLine1: '',
           footerLine2: '',
           footerLine3: '',
+        }),
+      });
+
+      await fetch(`${BACKEND_URL}/api/legal-pages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pages: createDefaultLegalPagesState(),
         }),
       });
 
@@ -1956,15 +2389,7 @@ function App() {
       await fetch(`${BACKEND_URL}/api/update-theme`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          design: defaultDesignKey,
-          vibeId: defaultVibe?.id,
-          fontHeading: defaultVibe?.headingFont,
-          fontBody: defaultVibe?.bodyFont,
-          colorPrimary: defaultVibe?.primary || defaultVibe?.accent,
-          colorBg: defaultVibe?.bg,
-          colorText: defaultVibe?.text,
-        }),
+        body: JSON.stringify(buildThemePayloadFromVibe(defaultDesignKey, defaultVibe)),
       });
 
       const createRes = await fetch(`${BACKEND_URL}/api/projects/create`, {
@@ -1988,6 +2413,7 @@ function App() {
             footerLine1: '',
             footerLine2: '',
             footerLine3: '',
+            legalPages: createDefaultLegalPagesState(),
             setupDone: false,
             isLive: false,
             lastPublishedViewUrl: '',
@@ -2003,6 +2429,7 @@ function App() {
 
       setCurrentProjectId(createData.project.id);
       setCurrentProjectPath(String(createData.project.path || ''));
+      setProjectName('');
       await refreshProjects();
       setStep('config');
     } catch (err) {
@@ -2105,6 +2532,7 @@ function App() {
         footerLine2: footerLine2.trim(),
         footerLine3: footerLine3.trim(),
       },
+      legalPages: normalizeLegalPagesState(legalPages),
       hosting: {
         hostingProvider,
         connectionType,
@@ -2136,6 +2564,7 @@ function App() {
         footerLine2: footerLine2.trim(),
         footerLine3: footerLine3.trim(),
       },
+      legalPages: normalizeLegalPagesState(legalPages),
     });
 
   const syncProjectStateToKirby = async ({ includeAccount = false, syncPages = true } = {}) => {
@@ -2159,6 +2588,14 @@ function App() {
       }),
     });
 
+    await fetch(`${BACKEND_URL}/api/legal-pages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pages: normalizeLegalPagesState(legalPages),
+      }),
+    });
+
     if (syncPages) {
       await syncPagesToKirby(pages);
     }
@@ -2167,15 +2604,7 @@ function App() {
     await fetch(`${BACKEND_URL}/api/update-theme`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        design: selectedDesign,
-        vibeId: vibe?.id,
-        fontHeading: vibe?.headingFont,
-        fontBody: vibe?.bodyFont,
-        colorPrimary: vibe?.primary || vibe?.accent,
-        colorBg: vibe?.bg,
-        colorText: vibe?.text,
-      }),
+      body: JSON.stringify(buildThemePayloadFromVibe(selectedDesign, vibe)),
     });
   };
 
@@ -2267,15 +2696,7 @@ function App() {
       await fetch(`${BACKEND_URL}/api/update-theme`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          design: selectedDesign,
-          vibeId: vibe?.id,
-          fontHeading: vibe?.headingFont,
-          fontBody: vibe?.bodyFont,
-          colorPrimary: vibe?.primary || vibe?.accent,
-          colorBg: vibe?.bg,
-          colorText: vibe?.text,
-        }),
+        body: JSON.stringify(buildThemePayloadFromVibe(selectedDesign, vibe)),
       });
 
       await fetch(`${BACKEND_URL}/api/update-site-meta`, {
@@ -2287,6 +2708,14 @@ function App() {
           footerLine1,
           footerLine2,
           footerLine3,
+        }),
+      });
+
+      await fetch(`${BACKEND_URL}/api/legal-pages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pages: normalizeLegalPagesState(legalPages),
         }),
       });
 
@@ -2383,6 +2812,33 @@ function App() {
     setPages(pages.filter(p => p.id !== id));
   };
 
+  const updateLegalPageState = (key, updates = {}) => {
+    if (!key) return;
+    setLegalPages((prev) => {
+      const next = normalizeLegalPagesState(prev);
+      next[key] = {
+        ...next[key],
+        ...updates,
+      };
+      return next;
+    });
+  };
+
+  const insertLegalTemplate = (key) => {
+    if (!key) return;
+
+    const context = {
+      projectName: projectName.trim(),
+      websiteUrl: normalizeWebsiteUrlInput(websiteUrl),
+      contactEmail: footerLine3.trim(),
+    };
+
+    updateLegalPageState(key, {
+      enabled: true,
+      content: buildLegalTemplateText(key, context),
+    });
+  };
+
   const startRename = (page) => {
     setEditingPageId(page.id);
     setEditingPageTitle(page.title);
@@ -2425,6 +2881,7 @@ function App() {
   ];
 
   const activeVibe = getSelectedVibe(selectedDesign, selectedVibeId);
+  const selectedStyleConfig = DESIGN_STYLES[selectedDesign] || DESIGN_STYLES[DEFAULT_DESIGN_STYLE];
 
   const handleDesignStyleChange = (styleKey) => {
     const normalizedStyleKey = normalizeDesignStyleKey(styleKey);
@@ -2444,7 +2901,8 @@ function App() {
       String(ftpPort || '').trim().length > 0,
     editor: step === 'editor' || setupDone || kirbyReady,
   };
-  const projectNameInHeader = projectName.trim() || (currentProjectId ? 'Unbenanntes Projekt' : '');
+  const projectNameInHeader = normalizeProjectNameValue(projectName);
+  const previewLogoUrl = String(siteLogoUrl || '').trim();
   const appFooterYear = new Date().getFullYear();
   const safeModeHeadline = 'Flider ist voruebergehend nicht verfuegbar';
   const safeModeDescription = safeModeCanSendSupport
@@ -3014,44 +3472,66 @@ function App() {
           </div>
         )}
 
+
         {/* ====== STEP: DESIGN ====== */}
         {step === 'design' && (
-          <div className="fade-in" style={{ maxWidth: '1000px', width: '100%', padding: '2rem' }}>
+          <div className="fade-in" style={{ maxWidth: '1120px', width: '100%', padding: '2rem' }}>
             <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem', textAlign: 'center' }}>Dein Stil</h2>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '3rem', textAlign: 'center' }}>
-              Wähle einen von 7 kuratierten Stilen. Du siehst sofort ein fertiges Design.
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', textAlign: 'center' }}>
+              Wähle einen von 7 kuratierten Stilen. Beschreibung und Vorschau aktualisieren sich sofort.
             </p>
 
-            {/* Theme Grid with Visual Previews */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem', marginBottom: '3rem' }}>
-              {Object.entries(DESIGN_STYLES).map(([key, style]) => {
-                const previewVibe = key === selectedDesign ? activeVibe : getDefaultVibeForStyle(key);
-                return (
-                <div key={key} onClick={() => handleDesignStyleChange(key)} className="theme-card" style={{
-                  cursor: 'pointer', background: 'var(--surface-color)', padding: '1rem', borderRadius: '12px',
-                  border: selectedDesign === key ? '2px solid #4facfe' : '1px solid var(--border-color)',
-                  transition: 'all 0.2s', boxShadow: selectedDesign === key ? '0 0 20px rgba(79,172,254,0.15)' : 'none'
-                }}>
-                  {/* Visual Preview */}
-                  <MiniSitePreview styleKey={key} vibe={previewVibe} />
-                  {/* Theme Info */}
-                  <div style={{ marginTop: '0.8rem', textAlign: 'center' }}>
-                    <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.2rem' }}>
-                      {style.name}
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                      {style.description}
-                    </div>
+            <div
+              className="design-layout"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'minmax(230px, 300px) minmax(0, 1fr)',
+                gap: '1.2rem',
+                alignItems: 'start',
+                marginBottom: '1.25rem'
+              }}
+            >
+              <div className="glass-panel" style={{ padding: '1.15rem', borderRadius: '12px' }}>
+                <h3 style={{ fontSize: '1.05rem', margin: '0 0 0.45rem 0' }}>Stil wählen</h3>
+                <select value={selectedDesign} onChange={(e) => handleDesignStyleChange(e.target.value)}>
+                  {Object.entries(DESIGN_STYLES).map(([key, style]) => (
+                    <option key={key} value={key}>{style.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="glass-panel" style={{ padding: '1.15rem', borderRadius: '12px' }}>
+                <h3 style={{ fontSize: '1.15rem', margin: '0 0 0.35rem 0' }}>
+                  {selectedStyleConfig?.name}
+                </h3>
+                <p style={{ color: 'var(--text-secondary)', margin: '0 0 0.8rem 0', fontSize: '0.84rem', lineHeight: 1.45 }}>
+                  {selectedStyleConfig?.summary || selectedStyleConfig?.description}
+                </p>
+                <details className="style-details-toggle">
+                  <summary>Details anzeigen</summary>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', marginTop: '0.7rem' }}>
+                    {(selectedStyleConfig?.details || []).map((line) => (
+                      <p key={`desc-${line}`} style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                        {line}
+                      </p>
+                    ))}
                   </div>
-                </div>
-              )})}
+                </details>
+              </div>
             </div>
 
-            {/* Full-Size Live Preview */}
-            <h3 style={{ fontSize: '1.3rem', marginBottom: '1rem', textAlign: 'center' }}>Vorschau</h3>
-            <LivePreview styleKey={selectedDesign} vibe={activeVibe} projectName={projectName} />
+            <div className="glass-panel" style={{ padding: '1.15rem', borderRadius: '12px' }}>
+              <details className="style-board-toggle">
+                <summary>Stil-Board (optional)</summary>
+                <div style={{ marginTop: '0.8rem' }}>
+                  <StyleGuideSnapshot styleKey={selectedDesign} vibe={activeVibe} />
+                </div>
+              </details>
+              <h3 style={{ fontSize: '1.08rem', margin: '1.05rem 0 0.6rem 0' }}>Website-Vorschau</h3>
+              <LivePreview styleKey={selectedDesign} vibe={activeVibe} projectName={projectName} logoUrl={previewLogoUrl} compact />
+            </div>
 
-            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '3rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginTop: '1.5rem' }}>
               <button className="btn-primary" style={{ padding: '1rem 3rem' }}
                 onClick={() => {
                   if (setupDone) {
@@ -3376,6 +3856,80 @@ function App() {
                       onChange={e => setFooterLine3(e.target.value)}
                       style={{ padding: '0.45rem 0.6rem', fontSize: '0.82rem' }}
                     />
+                  </div>
+
+                  <div style={{ marginTop: '1.15rem', paddingTop: '0.95rem', borderTop: '1px solid var(--border-color)' }}>
+                    <h3 style={{ margin: '0 0 0.35rem 0', fontSize: '1rem' }}>Rechtliches</h3>
+                    <p style={{ margin: '0 0 0.8rem 0', fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+                      Diese Seiten sind nicht im Hauptmenü sichtbar, aber über Footer-Links erreichbar.
+                    </p>
+
+                    {LEGAL_PAGE_DEFINITIONS.map((definition) => {
+                      const pageState = legalPages?.[definition.key] || { enabled: false, content: '' };
+                      return (
+                        <div
+                          key={`legal-${definition.key}`}
+                          style={{
+                            marginBottom: '0.9rem',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '8px',
+                            padding: '0.65rem',
+                            background: 'rgba(255,255,255,0.02)',
+                          }}
+                        >
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.82rem', marginBottom: pageState.enabled ? '0.6rem' : 0 }}>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(pageState.enabled)}
+                              onChange={(e) => {
+                                const nextEnabled = e.target.checked;
+                                if (nextEnabled && !String(pageState.content || '').trim()) {
+                                  insertLegalTemplate(definition.key);
+                                  return;
+                                }
+                                updateLegalPageState(definition.key, { enabled: nextEnabled });
+                              }}
+                            />
+                            <span>{definition.label} aktivieren</span>
+                          </label>
+
+                          {pageState.enabled && (
+                            <div className="input-group">
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.6rem', marginBottom: '0.3rem' }}>
+                                <label style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', margin: 0 }}>
+                                  Inhalt {definition.label}
+                                </label>
+                                <button
+                                  type="button"
+                                  className="btn-outline"
+                                  style={{ fontSize: '0.72rem', padding: '0.28rem 0.55rem' }}
+                                  onClick={() => insertLegalTemplate(definition.key)}
+                                >
+                                  {String(pageState.content || '').trim() ? 'Standardvorlage neu einfügen' : 'Standardvorlage einfügen'}
+                                </button>
+                              </div>
+                              <p style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', margin: '0 0 0.3rem 0' }}>
+                                Lange Texte sind erlaubt. Bitte rechtlich prüfen lassen.
+                              </p>
+                              <textarea
+                                value={String(pageState.content || '')}
+                                onChange={(e) => updateLegalPageState(definition.key, { content: e.target.value })}
+                                placeholder={`Hier den vollständigen Text für ${definition.label} einfügen...`}
+                                rows={10}
+                                style={{
+                                  width: '100%',
+                                  minHeight: '180px',
+                                  resize: 'vertical',
+                                  padding: '0.55rem 0.65rem',
+                                  fontSize: '0.8rem',
+                                  lineHeight: 1.45,
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </aside>
               )}

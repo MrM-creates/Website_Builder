@@ -306,6 +306,36 @@ h6 {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 1rem 1.4rem;
+    flex-wrap: wrap;
+}
+
+.footer-item {
+    margin: 0;
+}
+
+.footer-legal-links {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+
+.footer-legal-links a {
+    color: var(--color-text-light);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: var(--transition);
+}
+
+.footer-legal-links a:hover {
+    border-bottom-color: var(--color-accent);
+    color: var(--color-text);
+}
+
+.footer-legal-separator {
+    color: var(--color-text-light);
+    opacity: 0.75;
 }
 
 /* ==========================================================================
