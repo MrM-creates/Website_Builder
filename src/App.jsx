@@ -5,59 +5,89 @@ import './index.css';
    FLATSITE – Configuration Constants
    ========================================================================== */
 
+const DEFAULT_DESIGN_STYLE = 'minimal_swiss';
+
 const DESIGN_STYLES = {
-  brachial: {
-    name: 'Brachial',
-    description: 'Laut, kontrastreich, industriell',
-    previewClass: 'preview-brachial',
-    themeClass: 'theme-brachial',
+  minimal_swiss: {
+    name: 'Minimal Swiss',
+    description: 'Klar, präzise, ruhig',
+    previewClass: '',
+    themeClass: '',
   },
-  minimalist: {
-    name: 'Minimalist',
-    description: 'Ruhig, elegant, inhaltsfokussiert',
-    previewClass: 'preview-minimalist',
-    themeClass: 'theme-minimalist',
+  modern_editorial: {
+    name: 'Modern Editorial',
+    description: 'Editorial, modern, glaubwürdig',
+    previewClass: '',
+    themeClass: '',
   },
-  modern: {
-    name: 'Modern',
-    description: 'Clean, tech-affin, vertrauenswürdig',
-    previewClass: 'preview-modern',
-    themeClass: 'theme-modern',
+  warm_human: {
+    name: 'Warm Human',
+    description: 'Warm, freundlich, zugänglich',
+    previewClass: '',
+    themeClass: '',
   },
-  classic: {
-    name: 'Classic',
-    description: 'Zeitlos, wertig, erzählend',
-    previewClass: 'preview-classic',
-    themeClass: 'theme-classic',
+  bold_startup: {
+    name: 'Bold Startup',
+    description: 'Kontraststark, dynamisch, mutig',
+    previewClass: '',
+    themeClass: '',
+  },
+  premium_luxury: {
+    name: 'Premium Luxury',
+    description: 'Elegant, hochwertig, klassisch',
+    previewClass: '',
+    themeClass: '',
+  },
+  creative_playful: {
+    name: 'Creative Playful',
+    description: 'Lebendig, kreativ, auffällig',
+    previewClass: '',
+    themeClass: '',
+  },
+  natural_organic: {
+    name: 'Natural Organic',
+    description: 'Natürlich, ruhig, geerdet',
+    previewClass: '',
+    themeClass: '',
   },
 };
 
-// 4x4 curated vibe matrix (fixed font/color bundles)
+// 7 curated styles (one fixed token bundle per style)
 const DESIGN_VIBES = {
-  brachial: [
-    { id: 'B-01', label: 'Lass es knallen?', headingFont: '"Inter Tight", sans-serif', bodyFont: '"Inter", sans-serif', bg: '#1A1A1A', text: '#FFFFFF', accent: '#EEFF00' },
-    { id: 'B-02', label: 'Etwas technischer?', headingFont: '"Inter Tight", sans-serif', bodyFont: '"Inter", sans-serif', bg: '#0D0D0D', text: '#FFFFFF', accent: '#00FFFF' },
-    { id: 'B-03', label: 'Radikal reduziert?', headingFont: '"Inter Tight", sans-serif', bodyFont: '"Inter", sans-serif', bg: '#000000', text: '#FFFFFF', accent: '#FFFFFF' },
-    { id: 'B-04', label: 'Mehr Gefahr?', headingFont: '"Inter Tight", sans-serif', bodyFont: '"Inter", sans-serif', bg: '#1A1A1A', text: '#FFFFFF', accent: '#FF4500' },
+  minimal_swiss: [
+    { id: 'SW-01', label: 'Kuratierte Variante', displayFont: '"Inter", sans-serif', headingFont: '"Inter", sans-serif', bodyFont: '"Inter", sans-serif', bg: '#FAFAF8', surface: '#FFFFFF', text: '#111111', textSecondary: '#4B5563', primary: '#0F4C81', accent: '#D97706', border: '#D1D5DB' },
   ],
-  minimalist: [
-    { id: 'M-01', label: 'Schön entspannt?', headingFont: '"Playfair Display", serif', bodyFont: '"Source Sans 3", sans-serif', bg: '#F9F9F7', text: '#2C2C2C', accent: '#8A9A8A' },
-    { id: 'M-02', label: 'Ein Hauch von Luxus?', headingFont: '"Playfair Display", serif', bodyFont: '"Source Sans 3", sans-serif', bg: '#001F3F', text: '#FFFFFF', accent: '#D4AF37' },
-    { id: 'M-03', label: 'Galerie-Feeling?', headingFont: '"Playfair Display", serif', bodyFont: '"Source Sans 3", sans-serif', bg: '#FFFFFF', text: '#000000', accent: '#E0E0E0' },
-    { id: 'M-04', label: 'Warm & Erdig?', headingFont: '"Playfair Display", serif', bodyFont: '"Source Sans 3", sans-serif', bg: '#F2E8DF', text: '#3D2B1F', accent: '#BDB76B' },
+  modern_editorial: [
+    { id: 'ED-01', label: 'Kuratierte Variante', displayFont: '"Cormorant Garamond", serif', headingFont: '"Inter", sans-serif', bodyFont: '"Inter", sans-serif', bg: '#F7F5F1', surface: '#FFFFFF', text: '#171717', textSecondary: '#525252', primary: '#1F2937', accent: '#8B5E3C', border: '#E5E7EB' },
   ],
-  modern: [
-    { id: 'D-01', label: 'Schön professionell?', headingFont: '"Plus Jakarta Sans", sans-serif', bodyFont: '"Roboto", sans-serif', bg: '#FFFFFF', text: '#001F3F', accent: '#007AFF' },
-    { id: 'D-02', label: 'Eher Dark Mode?', headingFont: '"Plus Jakarta Sans", sans-serif', bodyFont: '"Roboto", sans-serif', bg: '#121212', text: '#F0F0F0', accent: '#BB86FC' },
-    { id: 'D-03', label: 'Mut zur Farbe?', headingFont: '"Plus Jakarta Sans", sans-serif', bodyFont: '"Roboto", sans-serif', bg: '#FFFFFF', text: '#2D3436', accent: '#6C5CE7' },
-    { id: 'D-04', label: 'Radikal aufgeräumt?', headingFont: '"Plus Jakarta Sans", sans-serif', bodyFont: '"Roboto", sans-serif', bg: '#F5F5F7', text: '#1D1D1F', accent: '#8E8E93' },
+  warm_human: [
+    { id: 'WH-01', label: 'Kuratierte Variante', displayFont: '"Outfit", sans-serif', headingFont: '"Outfit", sans-serif', bodyFont: '"Inter", sans-serif', bg: '#FFF8F4', surface: '#FFFFFF', text: '#3B2F2F', textSecondary: '#6B5B5B', primary: '#E58E73', accent: '#9BC4BC', border: '#F0D8CF' },
   ],
-  classic: [
-    { id: 'C-01', label: 'Wie ein Magazin?', headingFont: '"Libre Baskerville", serif', bodyFont: '"Lora", serif', bg: '#F2E8DF', text: '#3D2B1F', accent: '#BF4F26' },
-    { id: 'C-02', label: 'Ein Hauch Geschichte?', headingFont: '"Libre Baskerville", serif', bodyFont: '"Lora", serif', bg: '#F0F4F0', text: '#1B3022', accent: '#2D5A27' },
-    { id: 'C-03', label: 'Sehr seriös?', headingFont: '"Libre Baskerville", serif', bodyFont: '"Lora", serif', bg: '#FFFFFF', text: '#002366', accent: '#C5B358' },
-    { id: 'C-04', label: 'Vintage-Charme?', headingFont: '"Libre Baskerville", serif', bodyFont: '"Lora", serif', bg: '#FAF3E0', text: '#5D4037', accent: '#8D6E63' },
+  bold_startup: [
+    { id: 'BS-01', label: 'Kuratierte Variante', displayFont: '"Space Grotesk", sans-serif', headingFont: '"Space Grotesk", sans-serif', bodyFont: '"Inter", sans-serif', bg: '#0B1020', surface: '#111827', text: '#F9FAFB', textSecondary: '#CBD5E1', primary: '#7C3AED', accent: '#22C55E', border: '#334155' },
   ],
+  premium_luxury: [
+    { id: 'LX-01', label: 'Kuratierte Variante', displayFont: '"Cormorant Garamond", serif', headingFont: '"Inter", sans-serif', bodyFont: '"Inter", sans-serif', bg: '#F8F5F0', surface: '#FFFFFF', text: '#181512', textSecondary: '#5B524B', primary: '#2C221C', accent: '#A67C52', border: '#DED3C7' },
+  ],
+  creative_playful: [
+    { id: 'CP-01', label: 'Kuratierte Variante', displayFont: '"Space Grotesk", sans-serif', headingFont: '"Space Grotesk", sans-serif', bodyFont: '"Inter", sans-serif', bg: '#FFF9F1', surface: '#FFFFFF', text: '#1F2937', textSecondary: '#475569', primary: '#FF6B35', accent: '#3A86FF', border: '#FFD8C2' },
+  ],
+  natural_organic: [
+    { id: 'NO-01', label: 'Kuratierte Variante', displayFont: '"Fraunces", serif', headingFont: '"Inter", sans-serif', bodyFont: '"Inter", sans-serif', bg: '#F6F3EA', surface: '#FFFDF8', text: '#2E2A24', textSecondary: '#5F5A53', primary: '#6B7A52', accent: '#B08968', border: '#DDD5C8' },
+  ],
+};
+
+const LEGACY_DESIGN_KEY_MAP = {
+  brachial: 'bold_startup',
+  minimalist: 'minimal_swiss',
+  modern: 'modern_editorial',
+  classic: 'premium_luxury',
+};
+
+const normalizeDesignStyleKey = (value = '') => {
+  const raw = String(value || '').trim();
+  const mapped = LEGACY_DESIGN_KEY_MAP[raw] || raw;
+  return DESIGN_STYLES[mapped] ? mapped : DEFAULT_DESIGN_STYLE;
 };
 
 const getVibesForStyle = (styleKey) => DESIGN_VIBES[styleKey] || [];
@@ -369,8 +399,8 @@ function App() {
   const [dragOverIndex, setDragOverIndex] = useState(null);
 
   // Design
-  const [selectedDesign, setSelectedDesign] = useState('minimalist');
-  const [selectedVibeId, setSelectedVibeId] = useState(getDefaultVibeForStyle('minimalist')?.id || 'M-01');
+  const [selectedDesign, setSelectedDesign] = useState(DEFAULT_DESIGN_STYLE);
+  const [selectedVibeId, setSelectedVibeId] = useState(getDefaultVibeForStyle(DEFAULT_DESIGN_STYLE)?.id || 'SW-01');
 
   // Hosting
   const [hostingProvider, setHostingProvider] = useState(TEST_HOSTING_DEFAULTS.hostingProvider);
@@ -488,9 +518,16 @@ function App() {
     setProjectName(String(state.projectName || ''));
     setSiteLogoUrl(String(state.siteLogoUrl || ''));
     setSiteLogoError('');
-    const resolvedDesign = String(state.selectedDesign || 'minimalist');
+    const resolvedDesign = normalizeDesignStyleKey(state.selectedDesign || DEFAULT_DESIGN_STYLE);
     const fallbackVibe = getVibeByLegacyIndex(resolvedDesign, state.selectedColor);
-    const resolvedVibeId = String(state.selectedVibeId || fallbackVibe?.id || getDefaultVibeForStyle(resolvedDesign)?.id || '');
+    const preferredVibeId = String(state.selectedVibeId || '').trim();
+    const hasPreferredVibe = getVibesForStyle(resolvedDesign).some((vibe) => vibe.id === preferredVibeId);
+    const resolvedVibeId = String(
+      (hasPreferredVibe ? preferredVibeId : '') ||
+      fallbackVibe?.id ||
+      getDefaultVibeForStyle(resolvedDesign)?.id ||
+      ''
+    );
     setSelectedDesign(resolvedDesign);
     setSelectedVibeId(resolvedVibeId);
     const resolvedPort = String(state.ftpPort ?? TEST_HOSTING_DEFAULTS.ftpPort);
@@ -1873,8 +1910,8 @@ function App() {
     setEditingPageTitle('');
     setDragIndex(null);
     setDragOverIndex(null);
-    setSelectedDesign('minimalist');
-    setSelectedVibeId(getDefaultVibeForStyle('minimalist')?.id || 'M-01');
+    setSelectedDesign(DEFAULT_DESIGN_STYLE);
+    setSelectedVibeId(getDefaultVibeForStyle(DEFAULT_DESIGN_STYLE)?.id || 'SW-01');
     setHostingProvider(TEST_HOSTING_DEFAULTS.hostingProvider);
     setConnectionType(TEST_HOSTING_DEFAULTS.connectionType);
     setFooterLine1('');
@@ -1914,7 +1951,7 @@ function App() {
         }),
       });
 
-      const defaultDesignKey = 'minimalist';
+      const defaultDesignKey = DEFAULT_DESIGN_STYLE;
       const defaultVibe = getDefaultVibeForStyle(defaultDesignKey);
       await fetch(`${BACKEND_URL}/api/update-theme`, {
         method: 'POST',
@@ -1924,7 +1961,7 @@ function App() {
           vibeId: defaultVibe?.id,
           fontHeading: defaultVibe?.headingFont,
           fontBody: defaultVibe?.bodyFont,
-          colorPrimary: defaultVibe?.accent,
+          colorPrimary: defaultVibe?.primary || defaultVibe?.accent,
           colorBg: defaultVibe?.bg,
           colorText: defaultVibe?.text,
         }),
@@ -1938,8 +1975,8 @@ function App() {
           state: {
             projectName: '',
             siteLogoUrl: '',
-            selectedDesign: 'minimalist',
-            selectedVibeId: getDefaultVibeForStyle('minimalist')?.id || 'M-01',
+            selectedDesign: DEFAULT_DESIGN_STYLE,
+            selectedVibeId: getDefaultVibeForStyle(DEFAULT_DESIGN_STYLE)?.id || 'SW-01',
             hostingProvider: TEST_HOSTING_DEFAULTS.hostingProvider,
             connectionType: TEST_HOSTING_DEFAULTS.connectionType,
             ftpServer: TEST_HOSTING_DEFAULTS.ftpServer,
@@ -2135,7 +2172,7 @@ function App() {
         vibeId: vibe?.id,
         fontHeading: vibe?.headingFont,
         fontBody: vibe?.bodyFont,
-        colorPrimary: vibe?.accent,
+        colorPrimary: vibe?.primary || vibe?.accent,
         colorBg: vibe?.bg,
         colorText: vibe?.text,
       }),
@@ -2235,7 +2272,7 @@ function App() {
           vibeId: vibe?.id,
           fontHeading: vibe?.headingFont,
           fontBody: vibe?.bodyFont,
-          colorPrimary: vibe?.accent,
+          colorPrimary: vibe?.primary || vibe?.accent,
           colorBg: vibe?.bg,
           colorText: vibe?.text,
         }),
@@ -2388,11 +2425,11 @@ function App() {
   ];
 
   const activeVibe = getSelectedVibe(selectedDesign, selectedVibeId);
-  const activeStyleVibes = getVibesForStyle(selectedDesign);
 
   const handleDesignStyleChange = (styleKey) => {
-    const fallbackVibe = getDefaultVibeForStyle(styleKey);
-    setSelectedDesign(styleKey);
+    const normalizedStyleKey = normalizeDesignStyleKey(styleKey);
+    const fallbackVibe = getDefaultVibeForStyle(normalizedStyleKey);
+    setSelectedDesign(normalizedStyleKey);
     setSelectedVibeId(fallbackVibe?.id || '');
   };
 
@@ -2982,7 +3019,7 @@ function App() {
           <div className="fade-in" style={{ maxWidth: '1000px', width: '100%', padding: '2rem' }}>
             <h2 style={{ fontSize: '2rem', marginBottom: '0.5rem', textAlign: 'center' }}>Dein Stil</h2>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '3rem', textAlign: 'center' }}>
-              Wähle einen Grundstil und dann eine Vibe-Karte. Du siehst sofort ein fertiges Design.
+              Wähle einen von 7 kuratierten Stilen. Du siehst sofort ein fertiges Design.
             </p>
 
             {/* Theme Grid with Visual Previews */}
@@ -3008,42 +3045,6 @@ function App() {
                   </div>
                 </div>
               )})}
-            </div>
-
-            {/* Vibe cards (4 per style) */}
-            <h3 style={{ fontSize: '1.3rem', marginBottom: '1rem', textAlign: 'center' }}>
-              Wie soll es sich anfühlen? ({DESIGN_STYLES[selectedDesign]?.name})
-            </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.9rem', marginBottom: '3rem' }}>
-              {activeStyleVibes.map((vibe) => (
-                <button
-                  key={vibe.id}
-                  type="button"
-                  onClick={() => setSelectedVibeId(vibe.id)}
-                  style={{
-                    textAlign: 'left',
-                    borderRadius: '10px',
-                    border: selectedVibeId === vibe.id ? `2px solid ${vibe.accent}` : '1px solid var(--border-color)',
-                    background: selectedVibeId === vibe.id ? 'rgba(79,172,254,0.08)' : 'var(--surface-color)',
-                    padding: '0.85rem 0.9rem',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.55rem' }}>
-                    <span style={{ fontSize: '0.86rem', color: 'var(--text-secondary)' }}>{vibe.id}</span>
-                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: vibe.accent, display: 'inline-block' }}></span>
-                  </div>
-                  <div style={{ fontSize: '0.95rem', color: 'var(--text-primary)', fontWeight: 600, marginBottom: '0.55rem' }}>
-                    {vibe.label}
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.45rem' }}>
-                    <span style={{ width: '16px', height: '16px', borderRadius: '4px', background: vibe.bg, border: '1px solid rgba(255,255,255,0.2)' }}></span>
-                    <span style={{ width: '16px', height: '16px', borderRadius: '4px', background: vibe.text, border: '1px solid rgba(255,255,255,0.2)' }}></span>
-                    <span style={{ width: '16px', height: '16px', borderRadius: '4px', background: vibe.accent, border: '1px solid rgba(255,255,255,0.2)' }}></span>
-                  </div>
-                </button>
-              ))}
             </div>
 
             {/* Full-Size Live Preview */}
@@ -3194,7 +3195,7 @@ function App() {
             }}>
               {/* Left: compact design info */}
               <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                Design: {DESIGN_STYLES[selectedDesign]?.name} · {activeVibe?.id} · {activeVibe?.label}
+                Design: {DESIGN_STYLES[selectedDesign]?.name}
               </div>
 
               {/* Right: Actions */}
