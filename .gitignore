@@ -29,3 +29,7 @@ dist-ssr
 # Kirby runtime content is project-specific and should not be committed
 kirby-cms/content/**
 !kirby-cms/content/.gitkeep
+kirby-cms/assets/uploads/**
+
+# Local legacy workspace copy (separate repo) should stay out of this repo
+Flatsite/

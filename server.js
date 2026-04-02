@@ -1487,6 +1487,7 @@ const triggerRemoteUnzip = async (urls = []) => {
 const BACKEND_LOCAL_ORIGIN = 'http://127.0.0.1:3001';
 const FRONTEND_LOCAL_ORIGIN = 'http://127.0.0.1:5173';
 const KIRBY_LOCAL_ORIGIN = 'http://127.0.0.1:8000';
+const KIRBY_HEALTH_PATH = '/panel';
 const LOCAL_ORIGIN_CANDIDATES = [
     'http://127.0.0.1:5173',
     'http://localhost:5173',
@@ -1880,8 +1881,9 @@ const looksLikeKirbyRouterFatal = (value = '') => {
 
 const isKirbyReachable = async () => {
     try {
-        const response = await fetchWithTimeout(`${KIRBY_LOCAL_ORIGIN}/`, 2500);
-        if (response.status === 302) return true;
+        // Probe panel route instead of "/" because root can be 404 for valid project states.
+        const response = await fetchWithTimeout(`${KIRBY_LOCAL_ORIGIN}${KIRBY_HEALTH_PATH}`, 2500);
+        if (response.status >= 300 && response.status < 400) return true;
         if (!response.ok) return false;
         const body = await response.text();
         return !looksLikeKirbyRouterFatal(body);
@@ -3619,7 +3621,7 @@ app.get('/api/system/health', async (req, res) => {
                 acceptedStatus: [200],
                 timeoutMs: 1800
             }),
-            probeHttpService('kirby', `${KIRBY_LOCAL_ORIGIN}/`, {
+            probeHttpService('kirby', `${KIRBY_LOCAL_ORIGIN}${KIRBY_HEALTH_PATH}`, {
                 acceptedStatus: [200, 302],
                 timeoutMs: 2200
             })
@@ -3664,7 +3666,7 @@ app.get('/api/system/preflight', async (req, res) => {
                 acceptedStatus: [200],
                 timeoutMs: 1800
             }),
-            probeHttpService('kirby', `${KIRBY_LOCAL_ORIGIN}/`, {
+            probeHttpService('kirby', `${KIRBY_LOCAL_ORIGIN}${KIRBY_HEALTH_PATH}`, {
                 acceptedStatus: [200, 302],
                 timeoutMs: 2200
             })

@@ -18,7 +18,7 @@ kirby_ok=0
 
 is_ok "http://127.0.0.1:3001/api/project-signature" "200" && backend_ok=1
 is_ok "http://127.0.0.1:5173/" "200" && frontend_ok=1
-is_ok "http://127.0.0.1:8000/" "200 302" && kirby_ok=1
+is_ok "http://127.0.0.1:8000/panel" "200 302" && kirby_ok=1
 
 if [[ "$backend_ok" -eq 1 && "$frontend_ok" -eq 1 && "$kirby_ok" -eq 1 ]]; then
   echo "All services already healthy."

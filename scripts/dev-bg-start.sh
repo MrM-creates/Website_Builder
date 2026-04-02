@@ -82,7 +82,7 @@ echo "Waiting for services..."
 all_ok=1
 wait_for_http "backend" "http://127.0.0.1:3001/api/project-signature" "200" || all_ok=0
 wait_for_http "frontend" "http://127.0.0.1:5173/" "200" || all_ok=0
-wait_for_http "kirby" "http://127.0.0.1:8000/" "200 302" || all_ok=0
+wait_for_http "kirby" "http://127.0.0.1:8000/panel" "200 302" || all_ok=0
 
 echo ""
 if [[ "$all_ok" -ne 1 ]]; then
