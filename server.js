@@ -4141,16 +4141,35 @@ app.post('/api/projects/save', express.json(), async (req, res) => {
 
         const projectPath = normalizeProjectPath(requestedPathInput);
         const resolvedPathById = findProjectPathById(requestedId);
-        if (!resolvedPathById) {
-            return res.status(404).json({
-                success: false,
-                error: 'Projekt-ID konnte nicht aufgeloest werden'
-            });
-        }
-        if (resolvedPathById !== projectPath) {
+        if (resolvedPathById && resolvedPathById !== projectPath) {
             return res.status(409).json({
                 success: false,
                 error: 'Projektkontext-Konflikt (ID/Pfad)'
+            });
+        }
+        if (!resolvedPathById) {
+            // Fallback: trust explicit path if its manifest matches requested ID.
+            // This repairs stale/trimmed project history without blocking user saves.
+            const manifestByPath = readProjectManifest(projectPath, { migrate: true });
+            if (!manifestByPath) {
+                return res.status(404).json({
+                    success: false,
+                    error: 'Projekt-ID konnte nicht aufgeloest werden'
+                });
+            }
+
+            const manifestId = normalizeProjectId(manifestByPath.id);
+            if (manifestId !== requestedId) {
+                return res.status(409).json({
+                    success: false,
+                    error: 'Projektkontext-Konflikt (ID/Pfad)'
+                });
+            }
+
+            touchProjectInHistory({
+                ...manifestByPath,
+                id: manifestId,
+                path: projectPath
             });
         }
 
